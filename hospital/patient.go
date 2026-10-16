@@ -5,7 +5,7 @@ type Patient struct {
 	level           NarcolepsyLevel
 	state           PatientState
 	currentLocation string
-	assignedDoctor  Doctor
+	assignedDoctor  *Doctor
 }
 
 type PatientState int

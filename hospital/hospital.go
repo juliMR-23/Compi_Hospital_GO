@@ -1,9 +1,9 @@
 package hospital
 
 type Hospital struct {
-	Name     string
-	Doctors  []Doctor
-	Patients []Patient
-	Rooms    []Room
-	History  []EpisodeRecord
+	name     string
+	doctors  []*Doctor
+	patients []*Patient
+	rooms    []*Room
+	history  []*EpisodeRecord
 }

@@ -4,7 +4,7 @@ type Room struct {
 	number    int
 	capacity  int
 	state     RoomState
-	occupants []Patient
+	occupants []*Patient
 }
 
 type RoomState int
