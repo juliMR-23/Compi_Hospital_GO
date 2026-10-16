@@ -1,0 +1,26 @@
+# --- Binarios y Compilados de Go ---
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+__debug_bin
+
+# --- Archivos de Cobertura y Pruebas ---
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# --- Configuración de GoLand (JetBrains) ---
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# --- Variables de Entorno y Datos Sensibles ---
+.env
+.env.*
+
+/out/
