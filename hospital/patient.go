@@ -1,5 +1,7 @@
 package hospital
 
+import "fmt"
+
 type Patient struct {
 	Person          // embedded: Patient reuses the Person methods
 	level           NarcolepsyLevel
@@ -67,7 +69,7 @@ func (p *Patient) Room() *Room            { return p.room }
 
 func (p *Patient) SufferSleepAttack(location string) error {
 	if p.state != Awake {
-		return ErrIsAsleep
+		return fmt.Errorf("patient %s suffer sleep attack: %w", p.ID(), ErrIsAsleep)
 	}
 	p.state = AsleepInHallway
 	p.currentLocation = location
@@ -76,11 +78,11 @@ func (p *Patient) SufferSleepAttack(location string) error {
 
 func (p *Patient) WakeUp() error {
 	if p.state == Awake {
-		return ErrIsAwake
+		return fmt.Errorf("patient %s wake up: %w", p.ID(), ErrIsAwake)
 	}
 	if p.room != nil {
 		if err := p.room.Release(p); err != nil {
-			return err //do not lose the room: release it before dropping the reference
+			return fmt.Errorf("patient %s wake up: %w", p.ID(), err) //do not lose the room: release it before dropping the reference
 		}
 	}
 	p.state = Awake

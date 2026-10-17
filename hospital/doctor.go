@@ -1,6 +1,9 @@
 package hospital
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 const maxPatients = 4 //every Doctor has max 4 patients -> reach limit -> not Available
 type Doctor struct {
@@ -33,17 +36,17 @@ func (d *Doctor) IsAvailable() bool { return len(d.PatientsUnderCare()) < maxPat
 
 func (d *Doctor) AttendSleepEmergency(p *Patient) error {
 	if p == nil {
-		return ErrPatientNil
+		return fmt.Errorf("doctor %s attend sleep emergency: %w", d.ID(), ErrPatientNil)
 	}
 	if p.State() == Awake {
-		return ErrIsAwake //only a sleeping patient is a sleep emergency
+		return fmt.Errorf("doctor %s attend sleep emergency %s: %w", d.ID(), p.ID(), ErrIsAwake) //only a sleeping patient is a sleep emergency
 	}
 	return nil //no error -> the emergency can be attended
 }
 
 func (d *Doctor) Attend(p *Patient, location string) (EpisodeRecord, error) {
 	if err := d.AttendSleepEmergency(p); err != nil {
-		return EpisodeRecord{}, err
+		return EpisodeRecord{}, fmt.Errorf("doctor %s attend: %w", d.ID(), err)
 	}
 	episode := NewEpisode(p, d, location)
 	d.episodesAttended = append(d.episodesAttended, episode) // attends the emergency (even if unavailable)
@@ -52,16 +55,16 @@ func (d *Doctor) Attend(p *Patient, location string) (EpisodeRecord, error) {
 
 func (d *Doctor) DiagnosePatient(p *Patient) error {
 	if p == nil {
-		return ErrPatientNil
+		return fmt.Errorf("doctor %s diagnose patient: %w", d.ID(), ErrPatientNil)
 	}
 	if !d.IsAvailable() {
-		return ErrDocUnavailable //becoming in charge of a new patient -> availability is required
+		return fmt.Errorf("doctor %s diagnose patient %s: %w", d.ID(), p.ID(), ErrDocUnavailable) //becoming in charge of a new patient -> availability is required
 	}
 	if p.Doctor() != nil {
 		if p.Doctor() == d {
-			return ErrSameDoctor //already assigned to this same doctor
+			return fmt.Errorf("doctor %s diagnose patient %s: %w", d.ID(), p.ID(), ErrSameDoctor) //already assigned to this same doctor
 		}
-		return ErrAssignedToOther
+		return fmt.Errorf("doctor %s diagnose patient %s: %w", d.ID(), p.ID(), ErrAssignedToOther)
 	}
 	d.patientsUnderCare = append(d.patientsUnderCare, p)
 	p.assignedDoctor = d

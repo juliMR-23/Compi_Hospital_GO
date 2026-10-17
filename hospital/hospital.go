@@ -1,6 +1,9 @@
 package hospital
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 type Hospital struct {
 	name     string
@@ -26,10 +29,10 @@ func (h *Hospital) History() []*EpisodeRecord { return slices.Clone(h.history) }
 
 func (h *Hospital) AdmitPatient(p *Patient) error {
 	if p == nil {
-		return ErrPatientNil
+		return fmt.Errorf("admit patient: %w", ErrPatientNil)
 	}
 	if slices.Contains(h.patients, p) {
-		return ErrPatientAlreadyAdmitted //avoid duplicating the patient in the list
+		return fmt.Errorf("admit patient %s: %w", p.ID(), ErrPatientAlreadyAdmitted) //avoid duplicating the patient in the list
 	}
 	h.patients = append(h.patients, p)
 	return nil
@@ -37,10 +40,10 @@ func (h *Hospital) AdmitPatient(p *Patient) error {
 
 func (h *Hospital) HireDoctor(d *Doctor) error {
 	if d == nil {
-		return ErrDoctorNil
+		return fmt.Errorf("hire doctor: %w", ErrDoctorNil)
 	}
 	if slices.Contains(h.doctors, d) {
-		return ErrDoctorAlreadyHired //avoid duplicating the doctor in the staff
+		return fmt.Errorf("hire doctor %s: %w", d.ID(), ErrDoctorAlreadyHired) //avoid duplicating the doctor in the staff
 	}
 	h.doctors = append(h.doctors, d)
 	h.staff = append(h.staff, d) //a doctor is also an Attender
@@ -49,10 +52,10 @@ func (h *Hospital) HireDoctor(d *Doctor) error {
 
 func (h *Hospital) HireOrderly(o *Orderly) error {
 	if o == nil {
-		return ErrOrderlyNil
+		return fmt.Errorf("hire orderly: %w", ErrOrderlyNil)
 	}
 	if slices.Contains(h.staff, Attender(o)) {
-		return ErrOrderlyAlreadyHired //avoid duplicating the orderly in the staff
+		return fmt.Errorf("hire orderly %s: %w", o.ID(), ErrOrderlyAlreadyHired) //avoid duplicating the orderly in the staff
 	}
 	h.staff = append(h.staff, o) //an orderly is an Attender too
 	return nil
@@ -69,44 +72,48 @@ func (h *Hospital) AvailableAttender() Attender {
 
 func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) {
 	if p == nil {
-		return EpisodeRecord{}, ErrPatientNil
+		return EpisodeRecord{}, fmt.Errorf("dispatch patient: %w", ErrPatientNil)
 	}
 	attender := h.AvailableAttender()
 	if attender == nil {
-		return EpisodeRecord{}, ErrNoAttenderAvailable //nobody free -> no invented attender
+		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), ErrNoAttenderAvailable) //nobody free -> no invented attender
 	}
-	return attender.Attend(p, location) //dispatched without knowing if Doctor or Orderly
+	episode, err := attender.Attend(p, location) //dispatched without knowing if Doctor or Orderly
+	if err != nil {
+		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
+	}
+	return episode, nil
 }
 
 func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
-	if h.rooms == nil {
-		return nil, ErrNoFreeRoom
-	}
 	if p == nil {
-		return nil, ErrPatientNil
+		return nil, fmt.Errorf("assign room: %w", ErrPatientNil)
+	}
+	if h.rooms == nil {
+		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrNoFreeRoom)
 	}
 	if p.Room() != nil {
-		return nil, ErrHasRoom
+		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrHasRoom)
 	}
 	for _, r := range h.rooms {
 		if r.IsAvailable() {
 			if err := r.Occupy(p); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("assign room %s: %w", p.ID(), err)
 			}
 			p.room = r
 			p.state = AsleepInBed
 			return r, nil
 		}
 	}
-	return nil, ErrNoFreeRoom
+	return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrNoFreeRoom)
 }
 
 func (h *Hospital) RegisterEpisode(e *EpisodeRecord) error {
 	if e == nil {
-		return ErrEpisodeNil
+		return fmt.Errorf("register episode: %w", ErrEpisodeNil)
 	}
 	if slices.Contains(h.history, e) {
-		return ErrEpisodeAlreadyRegistered //avoid duplicating the episode in the history
+		return fmt.Errorf("register episode %s: %w", e.ID(), ErrEpisodeAlreadyRegistered) //avoid duplicating the episode in the history
 	}
 	h.history = append(h.history, e)
 	return nil

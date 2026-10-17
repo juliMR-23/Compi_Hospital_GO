@@ -1,6 +1,9 @@
 package hospital
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
 type Room struct {
 	number    int
@@ -45,10 +48,10 @@ func (r *Room) IsAvailable() bool {
 
 func (r *Room) Occupy(p *Patient) error {
 	if p == nil {
-		return ErrPatientNil
+		return fmt.Errorf("room %d occupy: %w", r.number, ErrPatientNil)
 	}
 	if r.state != Available {
-		return ErrRoomOccupied
+		return fmt.Errorf("room %d occupy patient %s: %w", r.number, p.ID(), ErrRoomOccupied)
 	}
 	r.state = Occupied
 	r.occupants = append(r.occupants, p)
@@ -56,6 +59,9 @@ func (r *Room) Occupy(p *Patient) error {
 }
 
 func (r *Room) Release(p *Patient) error {
+	if p == nil {
+		return fmt.Errorf("room %d release: %w", r.number, ErrPatientNil)
+	}
 	for i, occ := range r.occupants {
 		if occ == p {
 			r.occupants = append(r.occupants[:i], r.occupants[i+1:]...)
@@ -65,5 +71,5 @@ func (r *Room) Release(p *Patient) error {
 			return nil
 		}
 	}
-	return ErrNotInRoom
+	return fmt.Errorf("room %d release patient %s: %w", r.number, p.ID(), ErrNotInRoom)
 }
