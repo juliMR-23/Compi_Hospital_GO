@@ -13,7 +13,7 @@ type EpisodeRecord struct {
 	room     *Room
 }
 
-func NewEpisode(patient *Patient, attender Attender, location string, room *Room) *EpisodeRecord {
+func NewEpisode(patient *Patient, attender Attender, location string) *EpisodeRecord {
 	return &EpisodeRecord{
 		id:       generateID(TypeEpisode),
 		dateTime: time.Now(),
