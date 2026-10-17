@@ -1,6 +1,8 @@
 package hospital
 
-import "time"
+import (
+	"time"
+)
 
 type EpisodeRecord struct {
 	id       string
@@ -11,14 +13,14 @@ type EpisodeRecord struct {
 	room     *Room
 }
 
-func NewEpisode(id string, patient *Patient, attender Attender, location string, room *Room) *EpisodeRecord {
+func NewEpisode(patient *Patient, attender Attender, location string, room *Room) *EpisodeRecord {
 	return &EpisodeRecord{
-		id:       id,
+		id:       generateID(TypeEpisode),
 		dateTime: time.Now(),
 		patient:  patient,
 		attender: attender,
 		location: location,
-		room:     patient.Room(), //could be nil -> episode on the hallway, reception, others
+		room:     patient.Room(), //could be nil -> episode occurred on the hallway...
 	}
 }
 

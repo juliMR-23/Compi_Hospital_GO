@@ -25,12 +25,12 @@ const (
 	Severe
 )
 
-func NewPatient(id string, name string, age int, level NarcolepsyLevel, room *Room) *Patient {
+func NewPatient(name string, age int, level NarcolepsyLevel) *Patient {
 	return &Patient{
-		Person:          NewPerson(id, name, age),
+		Person:          NewPerson(generateID(TypePatient), name, age),
 		level:           level,
-		currentLocation: "reception",
-		room:            room,
+		currentLocation: "reception", //new patient -> no room yet
+		//room is nil by default
 		//PatientState is Awake by default
 	}
 }

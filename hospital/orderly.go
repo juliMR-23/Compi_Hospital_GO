@@ -7,9 +7,9 @@ type Orderly struct {
 	episodesAttended []*EpisodeRecord //as in doctor, this attender saves the history
 }
 
-func NewOrderly(id string, name string, age int) *Orderly {
+func NewOrderly(name string, age int) *Orderly {
 	return &Orderly{
-		Person: NewPerson(id, name, age),
+		Person: NewPerson(generateID(TypeOrderly), name, age),
 	}
 }
 

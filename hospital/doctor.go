@@ -9,9 +9,9 @@ type Doctor struct {
 	episodesAttended  []*EpisodeRecord
 }
 
-func NewDoctor(id string, name string, age int, specialty string) *Doctor {
+func NewDoctor(name string, age int, specialty string) *Doctor {
 	return &Doctor{
-		Person:    NewPerson(id, name, age),
+		Person:    NewPerson(generateID(TypeDoctor), name, age),
 		specialty: specialty,
 	}
 }
