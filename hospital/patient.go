@@ -66,6 +66,9 @@ func (p *Patient) Doctor() *Doctor        { return p.assignedDoctor }
 func (p *Patient) Room() *Room            { return p.room }
 
 func (p *Patient) SufferSleepAttack(location string) error {
+	if p.state != Awake {
+		return ErrIsAsleep
+	}
 	p.state = AsleepInHallway
 	p.currentLocation = location
 	return nil
@@ -75,8 +78,13 @@ func (p *Patient) WakeUp() error {
 	if p.state == Awake {
 		return ErrIsAwake
 	}
+	if p.room != nil {
+		if err := p.room.Release(p); err != nil {
+			return err //do not lose the room: release it before dropping the reference
+		}
+	}
 	p.state = Awake
-	p.currentLocation = "recovery room"
+	p.currentLocation = "recovery room" //send him to recovery right after
 	p.room = nil
 	return nil
 }

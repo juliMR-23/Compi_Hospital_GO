@@ -44,6 +44,9 @@ func (r *Room) IsAvailable() bool {
 }
 
 func (r *Room) Occupy(p *Patient) error {
+	if p == nil {
+		return ErrPatientNil
+	}
 	if r.state != Available {
 		return ErrRoomOccupied
 	}
