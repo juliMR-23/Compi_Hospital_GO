@@ -17,9 +17,9 @@ func NewDoctor(name string, age int, specialty string) *Doctor {
 	}
 }
 
-func (d *Doctor) Specialty() string                  { return d.specialty }
-func (d *Doctor) PatientsUnderCare() []*Patient      { return slices.Clone(d.patientsUnderCare) }
-func (d *Doctor) EpisodesAttended() []*EpisodeRecord { return slices.Clone(d.episodesAttended) }
+func (d *Doctor) Specialty() string             { return d.specialty }
+func (d *Doctor) PatientsUnderCare() []*Patient { return slices.Clone(d.patientsUnderCare) }
+func (d *Doctor) MyEpisodes() []*EpisodeRecord  { return slices.Clone(d.episodesAttended) }
 
 // / methods to implement the Attender interface
 func (d *Doctor) IsAvailable() bool { return len(d.PatientsUnderCare()) < maxPatients }

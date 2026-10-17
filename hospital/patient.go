@@ -17,6 +17,18 @@ const (
 	AsleepInBed
 )
 
+func (s PatientState) String() string {
+	switch s {
+	case Awake:
+		return "Awake"
+	case AsleepInHallway:
+		return "Asleep in hallway"
+	case AsleepInBed:
+		return "Asleep in bed"
+	default:
+		return "Unknown"
+	}
+} // for readable printing
 type NarcolepsyLevel int
 
 const (
@@ -25,6 +37,18 @@ const (
 	Severe
 )
 
+func (n NarcolepsyLevel) String() string {
+	switch n {
+	case Mild:
+		return "Mild"
+	case Moderate:
+		return "Moderate"
+	case Severe:
+		return "Severe"
+	default:
+		return "Unknown"
+	}
+}
 func NewPatient(name string, age int, level NarcolepsyLevel) *Patient {
 	return &Patient{
 		Person:          NewPerson(generateID(TypePatient), name, age),
@@ -40,3 +64,19 @@ func (p *Patient) State() PatientState    { return p.state }
 func (p *Patient) Location() string       { return p.currentLocation }
 func (p *Patient) Doctor() *Doctor        { return p.assignedDoctor }
 func (p *Patient) Room() *Room            { return p.room }
+
+func (p *Patient) SufferSleepAttack(location string) error {
+	p.state = AsleepInHallway
+	p.currentLocation = location
+	return nil
+}
+
+func (p *Patient) WakeUp() error {
+	if p.state == Awake {
+		return ErrIsAwake
+	}
+	p.state = Awake
+	p.currentLocation = "recovery room"
+	p.room = nil
+	return nil
+}

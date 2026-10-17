@@ -16,6 +16,16 @@ const (
 	Occupied
 )
 
+func (r RoomState) String() string {
+	switch r {
+	case Available:
+		return "Available"
+	case Occupied:
+		return "Occupied"
+	default:
+		return "Unknown"
+	}
+} // for readable printing
 func NewRoom(number int, capacity int) *Room {
 	return &Room{
 		number:   number,
@@ -28,3 +38,29 @@ func (r *Room) ID() int               { return r.number }
 func (r *Room) Capacity() int         { return r.capacity }
 func (r *Room) State() RoomState      { return r.state }
 func (r *Room) Occupants() []*Patient { return slices.Clone(r.occupants) }
+
+func (r *Room) IsAvailable() bool {
+	return r.state == Available
+}
+
+func (r *Room) Occupy(p *Patient) error {
+	if r.state != Available {
+		return ErrRoomOccupied
+	}
+	r.state = Occupied
+	r.occupants = append(r.occupants, p)
+	return nil
+}
+
+func (r *Room) Release(p *Patient) error {
+	for i, occ := range r.occupants {
+		if occ == p {
+			r.occupants = append(r.occupants[:i], r.occupants[i+1:]...)
+			if len(r.occupants) == 0 {
+				r.state = Available
+			}
+			return nil
+		}
+	}
+	return ErrNotInRoom
+}

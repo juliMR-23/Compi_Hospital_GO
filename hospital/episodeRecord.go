@@ -1,6 +1,7 @@
 package hospital
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -30,3 +31,10 @@ func (e EpisodeRecord) Patient() *Patient  { return e.patient }
 func (e EpisodeRecord) Attender() Attender { return e.attender }
 func (e EpisodeRecord) Location() string   { return e.location }
 func (e EpisodeRecord) Room() *Room        { return e.room }
+func (e EpisodeRecord) Summary() string {
+	roomName := "hallway"
+	if e.room != nil {
+		roomName = fmt.Sprintf("room %d", e.room.ID())
+	}
+	return fmt.Sprintf("%s %s -> %s", e.patient.Name(), e.location, roomName)
+}
