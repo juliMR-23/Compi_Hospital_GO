@@ -10,3 +10,21 @@ type EpisodeRecord struct {
 	location string
 	room     *Room
 }
+
+func NewEpisode(id string, patient *Patient, attender Attender, location string, room *Room) *EpisodeRecord {
+	return &EpisodeRecord{
+		id:       id,
+		dateTime: time.Now(),
+		patient:  patient,
+		attender: attender,
+		location: location,
+		room:     patient.Room(), //could be nil -> episode on the hallway, reception, others
+	}
+}
+
+func (e EpisodeRecord) ID() string         { return e.id }
+func (e EpisodeRecord) Time() time.Time    { return e.dateTime }
+func (e EpisodeRecord) Patient() *Patient  { return e.patient }
+func (e EpisodeRecord) Attender() Attender { return e.attender }
+func (e EpisodeRecord) Location() string   { return e.location }
+func (e EpisodeRecord) Room() *Room        { return e.room }
