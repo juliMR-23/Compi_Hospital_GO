@@ -535,7 +535,7 @@ func TestDispatchRotatesThroughStaff(t *testing.T) {
 	}
 }
 
-func TestDispatchSkipsUnavailableDoctor(t *testing.T) {
+func TestDispatchAttendsWithDoctorAtCapacity(t *testing.T) {
 	h := mustHospital(t, "test hospital")
 	doc := mustDoctor(t, "Karen", 41, "Neurología")
 	orderly := mustOrderly(t, "Inés", 29)
@@ -567,8 +567,11 @@ func TestDispatchSkipsUnavailableDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if episode.Attender() != orderly {
-		t.Fatalf("dispatch attender = %v, want the Orderly %v (the doctor is at capacity)", episode.Attender(), orderly)
+	if episode.Attender() != doc {
+		t.Fatalf("dispatch attender = %v, want the Doctor %v (an emergency is never gated by under-care load)", episode.Attender(), doc)
+	}
+	if len(doc.PatientsUnderCare()) != maxPatients {
+		t.Fatalf("patients under care = %d, want %d (attending must not change the under-care list)", len(doc.PatientsUnderCare()), maxPatients)
 	}
 }
 

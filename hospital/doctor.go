@@ -40,6 +40,9 @@ func (d *Doctor) MyEpisodes() []EpisodeRecord {
 }
 
 // / methods to implement the Attender interface
+// IsAvailable reports whether the doctor can take on another patient under care.
+// It is a Doctor-only concern (not part of the Attender interface): it gates
+// DiagnosePatient only, never the dispatch of an emergency.
 func (d *Doctor) IsAvailable() bool { return len(d.PatientsUnderCare()) < maxPatients }
 
 func (d *Doctor) AttendSleepEmergency(p *Patient) error {

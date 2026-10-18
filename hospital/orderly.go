@@ -23,7 +23,6 @@ func NewOrderly(name string, age int) (*Orderly, error) {
 func (o *Orderly) EpisodesAttended() []*EpisodeRecord { return slices.Clone(o.episodesAttended) }
 
 // /methods from Attender interface
-func (o *Orderly) IsAvailable() bool { return true } //always available -> around the hospital transferring patients
 func (o *Orderly) Attend(p *Patient, location string) (EpisodeRecord, error) {
 	if p == nil {
 		return EpisodeRecord{}, fmt.Errorf("orderly %s attend: %w", o.ID(), ErrPatientNil)
