@@ -53,18 +53,23 @@ func main() {
 	assignRoom(h, luz)
 	dispatch(h, luz, "fila de radiología")
 
-	// The fourth patient finds every bed taken: the hospital cannot assign a room,
-	// so the patient stays asleep in the hallway. The hospital detects the state
-	// and auto-dispatches an attender to the hallway.
+	// The fourth patient finds every bed taken. Query 5.3 (Assigning room) is
+	// answered right here, while he is still asleep in the hallway, so the
+	// "no room available" case is exercised on a genuinely sleeping patient.
 	sleepAttack(wilfrido, "pasillo 2, segundo piso")
-	if _, err := h.AssignRoom(wilfrido); err != nil {
-		fmt.Printf("  %s %s could not get a room and stays in the hallway (%v)\n", wilfrido.ID(), wilfrido.Name(), err)
+	fmt.Printf("\n== Assigning room to %s ==\n", wilfrido.ID())
+	if room, err := h.AssignRoom(wilfrido); err != nil {
+		fmt.Printf("  no room available: patient stays in the hallway (%v)\n", err)
+	} else {
+		fmt.Printf("  %s assigned to room %d\n", wilfrido.ID(), room.ID())
 	}
+
+	// The hospital detects the hallway state and auto-dispatches an attender to him.
 	for _, err := range h.AttendHallwayPatients() {
 		check(err)
 	}
 
-	// 6. One patient wakes up, releases the room, and the hallway patient moves in.
+	// One patient wakes up, releases the room, and the hallway patient moves in.
 	fmt.Println("\n== Room release and reassignment ==")
 	check(yeimy.WakeUp())
 	fmt.Printf("  %s woke up and released room 101\n", yeimy.ID())
@@ -74,9 +79,9 @@ func main() {
 		fmt.Printf("  %s moved from the hallway to room %d\n", wilfrido.ID(), room.ID())
 	}
 
-	// --- The four required queries (Section 5), printed last on the final state ---
-	// The hallway patient has already been reassigned, so the scenario ends with
-	// nobody left asleep in the hallway.
+	// --- The remaining required queries (Section 5), on the final state ---
+	// Query 5.3 was already answered above; the hallway patient has since been
+	// reassigned, so Query 5.1 now reports that nobody is left asleep.
 
 	// Query 5.1
 	fmt.Println("\n== Patients asleep in hallway ==")
@@ -92,15 +97,6 @@ func main() {
 	fmt.Printf("== Episodes attended by Dr. %s ==\n", karen.Name())
 	for _, e := range karen.MyEpisodes() {
 		fmt.Printf("  %s %s\n", e.Time().Format("2006-01-02 15:04"), e.Summary())
-	}
-
-	// Query 5.3: every room is occupied again (the hallway patient took the freed
-	// bed), so the fifth patient cannot get a room and the query reports the error.
-	fmt.Printf("== Assigning room to %s ==\n", alexander.ID())
-	if room, err := h.AssignRoom(alexander); err != nil {
-		fmt.Printf("  %v\n", err)
-	} else {
-		fmt.Printf("  %s assigned to room %d\n", alexander.ID(), room.ID())
 	}
 
 	// Query 5.4
