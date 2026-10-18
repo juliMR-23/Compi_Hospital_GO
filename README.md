@@ -81,6 +81,8 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestPatientsInHallway` | The query returns only patients whose state is `AsleepInHallway`, not those already in bed. |
 | `TestSevereReportCountsEpisodes` | The severity report contains only `Severe` patients, each paired with their episode count taken from the hospital history. |
 | `TestAttenderPolymorphism` | A `[]Attender` holding a `Doctor` and an `Orderly` dispatches each one through the interface, and the episode records the right attender. |
+| `TestDoctorDiagnosesUntilCapacity` | A doctor takes patients under care, refuses the same patient twice with `ErrSameDoctor`, becomes unavailable at `maxPatients`, then rejects one more with `ErrDocUnavailable`. |
+| `TestDoctorAttendsEmergencyAtCapacity` | A doctor already at `maxPatients` still attends a sleep emergency through `AttendSleepEmergency`/`Attend`; availability and the under-care list stay unchanged. |
 | `TestNewRoomRejectsInvalidInput` | `NewRoom` rejects `capacity <= 0` and a negative room number with a wrapped `ErrInvalidInput` and returns `nil`. |
 | `TestConstructorsRejectInvalidInput` | `NewHospital`, `NewPatient`, `NewDoctor` and `NewOrderly` reject a blank name (and blank specialty), a non-positive age and an out-of-range narcolepsy level with a wrapped `ErrInvalidInput`. |
 | `TestRoomAcceptsMultipleUntilCapacity` | A capacity-2 room stays `Available` with a free slot, becomes `Occupied` only when full, refuses overflow with `ErrRoomOccupied`, and returns to `Available` after a release. |
@@ -90,6 +92,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestAssignRoomFillsCapacityBeforeNextRoom` | `AssignRoom` fills the first room up to its capacity before spilling into the next one. |
 | `TestDispatchUsesOrderlyWhenNoDoctor` | With only an `Orderly` on staff, `Dispatch` selects it through the interface and records the episode in the history. |
 | `TestDispatchRotatesThroughStaff` | The round-robin cursor rotates dispatch across staff: first the doctor, then the orderly. |
+| `TestDispatchSkipsUnavailableDoctor` | A doctor already at `maxPatients` is skipped by `Dispatch`, which falls through to the available orderly. |
 | `TestAttendHallwayPatients` | Auto-dispatch attends every patient stuck in a hallway, records the episode, and leaves the patient's state unchanged. |
 
 ## Design decisions
@@ -103,6 +106,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 - **Typed state constants.** `PatientState`, `NarcolepsyLevel` and `RoomState` are named types with `iota` constants and a `String()` method, avoiding loose strings and giving readable output.
 - **Errors as values, never `panic`.** Every foreseeable failure returns a wrapped error using `fmt.Errorf("...: %w", ...)` and a sentinel error (e.g. `ErrNoFreeRoom`, `ErrRoomOccupied`), so callers can inspect them with `errors.Is`.
 - **Round-robin dispatch.** A cursor (`nextAttender`) walks the staff list so that an always-available attender cannot starve the rest; over several dispatches both concrete types are actually used.
+- **Availability reflects the under-care load.** `Doctor.IsAvailable` is `true` while the doctor has fewer than `maxPatients` patients under care; `DiagnosePatient` grows that list and rejects further patients once the limit is reached (`ErrDocUnavailable`). `AvailableAttender` reuses the same predicate, so a doctor at capacity is skipped during dispatch. Availability only limits taking on **new** patients and the dispatch rotation, never attending: `AttendSleepEmergency`/`Attend` always work, so a doctor at capacity still responds to an emergency.
 - **State-driven auto-dispatch.** `AttendHallwayPatients` scans the `AsleepInHallway` patients and dispatches an attender to each, so the hospital decides when to act based on the patient's state.
 - **Queries on the final state.** The demo answers Query 5.3 in the middle of the scenario, while the fourth patient is still asleep in the hallway, so the "no free room" path runs on a genuinely sleeping patient. The remaining queries print only after the scenario ends, so Query 5.1 shows the hallway emptied once the woken patient freed a bed and the hallway patient moved in.
 - **The hospital owns its history.** `Dispatch` records the episode in the hospital history itself (the attender keeps its own copy), and `RegisterEpisode` de-duplicates by episode id.

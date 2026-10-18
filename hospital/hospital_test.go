@@ -249,6 +249,82 @@ func TestAttenderPolymorphism(t *testing.T) {
 	}
 }
 
+func TestDoctorDiagnosesUntilCapacity(t *testing.T) {
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
+	if !doc.IsAvailable() {
+		t.Fatal("a freshly hired doctor must be available")
+	}
+
+	first := mustPatient(t, "Ana", 30, Mild)
+	if err := doc.DiagnosePatient(first); err != nil {
+		t.Fatalf("DiagnosePatient(first): %v", err)
+	}
+	if first.Doctor() != doc {
+		t.Fatalf("patient doctor = %v, want %v", first.Doctor(), doc)
+	}
+	if err := doc.DiagnosePatient(first); !errors.Is(err, ErrSameDoctor) {
+		t.Fatalf("DiagnosePatient(first) again: err = %v, want it to wrap %v", err, ErrSameDoctor)
+	}
+
+	for i := 1; i < maxPatients; i++ {
+		p := mustPatient(t, "Patient", 20, Mild)
+		if err := doc.DiagnosePatient(p); err != nil {
+			t.Fatalf("DiagnosePatient(%d): %v", i, err)
+		}
+	}
+	if doc.IsAvailable() {
+		t.Fatalf("doctor must be unavailable at %d patients under care", maxPatients)
+	}
+	if got := len(doc.PatientsUnderCare()); got != maxPatients {
+		t.Fatalf("patients under care = %d, want %d", got, maxPatients)
+	}
+
+	overflow := mustPatient(t, "Beto", 40, Mild)
+	if err := doc.DiagnosePatient(overflow); !errors.Is(err, ErrDocUnavailable) {
+		t.Fatalf("DiagnosePatient(overflow): err = %v, want it to wrap %v", err, ErrDocUnavailable)
+	}
+	if overflow.Doctor() != nil {
+		t.Fatalf("rejected patient must stay unattached, got doctor %v", overflow.Doctor())
+	}
+}
+
+func TestDoctorAttendsEmergencyAtCapacity(t *testing.T) {
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
+	for i := 0; i < maxPatients; i++ {
+		if err := doc.DiagnosePatient(mustPatient(t, "UnderCare", 20, Mild)); err != nil {
+			t.Fatalf("DiagnosePatient(%d): %v", i, err)
+		}
+	}
+	if doc.IsAvailable() {
+		t.Fatal("doctor must be unavailable at capacity before attending")
+	}
+
+	p := mustPatient(t, "Fabián", 55, Severe)
+	if err := p.SufferSleepAttack("cafetería"); err != nil {
+		t.Fatalf("SufferSleepAttack: %v", err)
+	}
+
+	if err := doc.AttendSleepEmergency(p); err != nil {
+		t.Fatalf("AttendSleepEmergency at capacity: %v (a full doctor must still attend emergencies)", err)
+	}
+	episode, err := doc.Attend(p, "cafetería")
+	if err != nil {
+		t.Fatalf("Attend at capacity: %v (a full doctor must still attend emergencies)", err)
+	}
+	if episode.Attender() != doc {
+		t.Fatalf("episode attender = %v, want the doctor %v", episode.Attender(), doc)
+	}
+	if len(doc.MyEpisodes()) != 1 {
+		t.Fatalf("doctor episodes = %d, want 1", len(doc.MyEpisodes()))
+	}
+	if got := len(doc.PatientsUnderCare()); got != maxPatients {
+		t.Fatalf("patients under care = %d, want %d (attending must not change the under-care list)", got, maxPatients)
+	}
+	if doc.IsAvailable() {
+		t.Fatal("attending an emergency must not change availability")
+	}
+}
+
 func TestNewRoomRejectsInvalidInput(t *testing.T) {
 	for _, capacity := range []int{0, -1} {
 		room, err := NewRoom(101, capacity)
@@ -456,6 +532,43 @@ func TestDispatchRotatesThroughStaff(t *testing.T) {
 
 	if got[0] != doc || got[1] != orderly {
 		t.Fatalf("dispatch order = [%v, %v], want [%v, %v] (round-robin must rotate)", got[0], got[1], doc, orderly)
+	}
+}
+
+func TestDispatchSkipsUnavailableDoctor(t *testing.T) {
+	h := mustHospital(t, "test hospital")
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
+	orderly := mustOrderly(t, "Inés", 29)
+	if err := h.HireDoctor(doc); err != nil {
+		t.Fatalf("HireDoctor: %v", err)
+	}
+	if err := h.HireOrderly(orderly); err != nil {
+		t.Fatalf("HireOrderly: %v", err)
+	}
+
+	for i := 0; i < maxPatients; i++ {
+		if err := doc.DiagnosePatient(mustPatient(t, "UnderCare", 20, Mild)); err != nil {
+			t.Fatalf("DiagnosePatient(%d): %v", i, err)
+		}
+	}
+	if doc.IsAvailable() {
+		t.Fatalf("doctor must be unavailable at %d patients under care", maxPatients)
+	}
+
+	p := mustPatient(t, "Fabián", 55, Mild)
+	if err := h.AdmitPatient(p); err != nil {
+		t.Fatalf("AdmitPatient: %v", err)
+	}
+	if err := p.SufferSleepAttack("hallway"); err != nil {
+		t.Fatalf("SufferSleepAttack: %v", err)
+	}
+
+	episode, err := h.Dispatch(p, "hallway")
+	if err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if episode.Attender() != orderly {
+		t.Fatalf("dispatch attender = %v, want the Orderly %v (the doctor is at capacity)", episode.Attender(), orderly)
 	}
 }
 
