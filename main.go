@@ -52,9 +52,11 @@ func main() {
 	assignRoom(h, luz)
 	dispatch(h, luz, "fila de radiología")
 
-	// The fourth one stays in the hallway: no room is assigned, but the attender still attends.
+	// The fourth one stays in the hallway: the hospital detects the state and auto-dispatches an attender.
 	sleepAttack(wilfrido, "pasillo 2, segundo piso")
-	dispatch(h, wilfrido, "pasillo 2, segundo piso")
+	for _, err := range h.AttendHallwayPatients() {
+		check(err)
+	}
 
 	// --- The four required queries (Section 5), in the order of the illustrative output ---
 	// Query 5.1: printed right after the fourth patient is left stuck in the hallway.

@@ -6,12 +6,13 @@ import (
 )
 
 type Hospital struct {
-	name     string
-	doctors  []*Doctor
-	patients []*Patient
-	rooms    []*Room
-	history  []*EpisodeRecord
-	staff    []Attender //polymorphism: holds doctors and orderlies dispatched together
+	name         string
+	doctors      []*Doctor
+	patients     []*Patient
+	rooms        []*Room
+	history      []*EpisodeRecord
+	staff        []Attender //polymorphism: holds doctors and orderlies dispatched together
+	nextAttender int        //round-robin cursor: rotates dispatch so one always-available attender cannot starve the rest
 }
 
 func NewHospital(name string) *Hospital {
@@ -73,9 +74,12 @@ func (h *Hospital) RegisterRoom(r *Room) error {
 }
 
 func (h *Hospital) AvailableAttender() Attender {
-	for _, a := range h.staff {
-		if a.IsAvailable() { //no concrete type known here -> pure polymorphism
-			return a
+	n := len(h.staff)
+	for i := 0; i < n; i++ {
+		idx := (h.nextAttender + i) % n //walk the list from the cursor, wrapping around
+		if h.staff[idx].IsAvailable() { //no concrete type known here -> pure polymorphism
+			h.nextAttender = (idx + 1) % n //advance past the attender we just used
+			return h.staff[idx]
 		}
 	}
 	return nil
@@ -97,6 +101,21 @@ func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) 
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
 	return episode, nil
+}
+
+// AttendHallwayPatients dispatches an available attender to every patient
+// currently stuck in a hallway. The hospital decides WHEN to act (the state
+// AsleepInHallway) and WHO goes (the round-robin cursor over []Attender, which
+// keeps alternating between doctors and orderlies). It never panics: failures
+// are returned so the caller can report them.
+func (h *Hospital) AttendHallwayPatients() []error {
+	var errs []error
+	for _, p := range h.PatientsInHallway() {
+		if _, err := h.Dispatch(p, p.Location()); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
 }
 
 func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
