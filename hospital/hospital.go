@@ -61,6 +61,17 @@ func (h *Hospital) HireOrderly(o *Orderly) error {
 	return nil
 }
 
+func (h *Hospital) RegisterRoom(r *Room) error {
+	if r == nil {
+		return fmt.Errorf("register room: %w", ErrRoomNil)
+	}
+	if slices.Contains(h.rooms, r) {
+		return fmt.Errorf("register room %d: %w", r.ID(), ErrRoomAlreadyRegistered) //avoid duplicating the room in the list
+	}
+	h.rooms = append(h.rooms, r)
+	return nil
+}
+
 func (h *Hospital) AvailableAttender() Attender {
 	for _, a := range h.staff {
 		if a.IsAvailable() { //no concrete type known here -> pure polymorphism
@@ -80,6 +91,9 @@ func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) 
 	}
 	episode, err := attender.Attend(p, location) //dispatched without knowing if Doctor or Orderly
 	if err != nil {
+		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
+	}
+	if err := h.RegisterEpisode(&episode); err != nil { //the hospital keeps the history it coordinated, not the caller
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
 	return episode, nil
@@ -112,7 +126,7 @@ func (h *Hospital) RegisterEpisode(e *EpisodeRecord) error {
 	if e == nil {
 		return fmt.Errorf("register episode: %w", ErrEpisodeNil)
 	}
-	if slices.Contains(h.history, e) {
+	if slices.ContainsFunc(h.history, func(ep *EpisodeRecord) bool { return ep.ID() == e.ID() }) {
 		return fmt.Errorf("register episode %s: %w", e.ID(), ErrEpisodeAlreadyRegistered) //avoid duplicating the episode in the history
 	}
 	h.history = append(h.history, e)
