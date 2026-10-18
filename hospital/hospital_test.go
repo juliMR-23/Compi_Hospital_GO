@@ -142,6 +142,25 @@ func TestAssignRoomNoFreeRoom(t *testing.T) {
 	}
 }
 
+func TestAssignRoomRejectsAwakePatient(t *testing.T) {
+	h := newHospitalWithRooms(t, 101)
+	p := mustPatient(t, "Ana", 30, Mild)
+	if err := h.AdmitPatient(p); err != nil {
+		t.Fatalf("AdmitPatient: %v", err)
+	}
+
+	room, err := h.AssignRoom(p) // still Awake: no sleep attack happened
+	if !errors.Is(err, ErrIsAwake) {
+		t.Fatalf("err = %v, want it to wrap %v", err, ErrIsAwake)
+	}
+	if room != nil {
+		t.Fatalf("room = %v, want nil for an awake patient", room)
+	}
+	if p.State() != Awake {
+		t.Fatalf("state = %v, want %v (the guard must not change it)", p.State(), Awake)
+	}
+}
+
 func TestPatientsInHallway(t *testing.T) {
 	h := newHospitalWithRooms(t, 101)
 
@@ -326,6 +345,27 @@ func TestRoomRejectsDuplicatePatient(t *testing.T) {
 	}
 	if len(room.Occupants()) != 1 {
 		t.Fatalf("occupants = %d, want 1 (a duplicate must not take a slot)", len(room.Occupants()))
+	}
+}
+
+func TestRoomKeepsPatientLink(t *testing.T) {
+	room, err := NewRoom(201, 1)
+	if err != nil {
+		t.Fatalf("NewRoom: %v", err)
+	}
+	p := mustPatient(t, "Ana", 30, Mild)
+
+	if err := room.Occupy(p); err != nil {
+		t.Fatalf("Occupy: %v", err)
+	}
+	if p.Room() != room {
+		t.Fatalf("patient room = %v, want %v (Occupy must set the back-reference)", p.Room(), room)
+	}
+	if err := room.Release(p); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if p.Room() != nil {
+		t.Fatalf("patient room = %v, want nil after Release", p.Room())
 	}
 }
 

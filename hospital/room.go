@@ -72,6 +72,7 @@ func (r *Room) Occupy(p *Patient) error {
 		return fmt.Errorf("room %d occupy patient %s: %w", r.number, p.ID(), ErrRoomOccupied) //full -> refuse, do not overflow capacity
 	}
 	r.occupants = append(r.occupants, p)
+	p.room = r //keep the patient's back-reference in sync with the room
 	r.refreshState()
 	return nil
 }
@@ -83,6 +84,7 @@ func (r *Room) Release(p *Patient) error {
 	for i, occ := range r.occupants {
 		if occ == p {
 			r.occupants = append(r.occupants[:i], r.occupants[i+1:]...)
+			p.room = nil     //drop the back-reference together with the occupant
 			r.refreshState() //a freed slot always leaves the room with at least one free space
 			return nil
 		}

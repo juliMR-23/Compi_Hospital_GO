@@ -132,13 +132,15 @@ func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
 	if p.Room() != nil {
 		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrHasRoom)
 	}
+	if p.State() == Awake {
+		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrIsAwake) //only a sleeping patient needs a bed
+	}
 	for _, r := range h.rooms {
 		if r.IsAvailable() {
 			if err := r.Occupy(p); err != nil {
 				return nil, fmt.Errorf("assign room %s: %w", p.ID(), err)
 			}
-			p.room = r
-			p.state = AsleepInBed
+			p.state = AsleepInBed //the room already set the back-reference on Occupy
 			return r, nil
 		}
 	}

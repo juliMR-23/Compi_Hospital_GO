@@ -93,7 +93,6 @@ func (p *Patient) WakeUp() error {
 		}
 	}
 	p.state = Awake
-	p.currentLocation = "recovery room" //send him to recovery right after
-	p.room = nil
+	p.currentLocation = "recovery area" //send him to recovery right after (the room cleared its own back-reference)
 	return nil
 }
