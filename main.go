@@ -20,9 +20,11 @@ func main() {
 	check(h.HireOrderly(yeison))
 
 	// 3. Register 3 rooms with capacity 1.
-	check(h.RegisterRoom(hospital.NewRoom(101, 1)))
-	check(h.RegisterRoom(hospital.NewRoom(102, 1)))
-	check(h.RegisterRoom(hospital.NewRoom(103, 1)))
+	for _, number := range []int{101, 102, 103} {
+		room, err := hospital.NewRoom(number, 1)
+		check(err)
+		check(h.RegisterRoom(room))
+	}
 
 	// 4. Admit 5 patients (at least two of them Severe).
 	yeimy := hospital.NewPatient("Yeimy Padilla", 34, hospital.Severe)
