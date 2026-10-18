@@ -3,6 +3,7 @@ package hospital
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 type Hospital struct {
@@ -15,10 +16,13 @@ type Hospital struct {
 	nextAttender int        //round-robin cursor: rotates dispatch so one always-available attender cannot starve the rest
 }
 
-func NewHospital(name string) *Hospital {
+func NewHospital(name string) (*Hospital, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("new hospital: name is required: %w", ErrInvalidInput)
+	}
 	return &Hospital{
 		name: name,
-	}
+	}, nil
 }
 
 func (h *Hospital) Name() string              { return h.name }
@@ -66,8 +70,8 @@ func (h *Hospital) RegisterRoom(r *Room) error {
 	if r == nil {
 		return fmt.Errorf("register room: %w", ErrRoomNil)
 	}
-	if slices.Contains(h.rooms, r) {
-		return fmt.Errorf("register room %d: %w", r.ID(), ErrRoomAlreadyRegistered) //avoid duplicating the room in the list
+	if slices.ContainsFunc(h.rooms, func(existing *Room) bool { return existing.ID() == r.ID() }) {
+		return fmt.Errorf("register room %d: %w", r.ID(), ErrRoomAlreadyRegistered) //avoid registering the same room number twice, even with a different pointer
 	}
 	h.rooms = append(h.rooms, r)
 	return nil

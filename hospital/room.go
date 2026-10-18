@@ -30,8 +30,11 @@ func (r RoomState) String() string {
 	}
 } // for readable printing
 func NewRoom(number int, capacity int) (*Room, error) {
+	if number < 0 {
+		return nil, fmt.Errorf("new room: number must not be negative: %w", ErrInvalidInput)
+	}
 	if capacity <= 0 {
-		return nil, fmt.Errorf("new room %d: %w", number, ErrInvalidRoomCapacity)
+		return nil, fmt.Errorf("new room %d: capacity must be greater than zero: %w", number, ErrInvalidInput)
 	}
 	return &Room{
 		number:   number,

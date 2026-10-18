@@ -12,7 +12,7 @@ var (
 	ErrNoFreeRoom               = errors.New("no free rooms at this time")
 	ErrRoomNil                  = errors.New("room is nil here")
 	ErrRoomOccupied             = errors.New("room is occupied")
-	ErrInvalidRoomCapacity      = errors.New("room capacity must be greater than zero")
+	ErrInvalidInput             = errors.New("invalid input")
 	ErrRoomAlreadyRegistered    = errors.New("room is already registered in this hospital")
 	ErrNotInRoom                = errors.New("patient is not in this room")
 	ErrAlreadyInRoom            = errors.New("patient is already in this room")

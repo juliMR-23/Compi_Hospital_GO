@@ -1,17 +1,28 @@
 package hospital
 
+import (
+	"fmt"
+	"strings"
+)
+
 type Person struct {
 	id   string
 	name string
 	age  int
 }
 
-func NewPerson(id string, name string, age int) Person {
+func NewPerson(id string, name string, age int) (Person, error) {
+	if strings.TrimSpace(name) == "" {
+		return Person{}, fmt.Errorf("new person %s: name is required: %w", id, ErrInvalidInput)
+	}
+	if age <= 0 {
+		return Person{}, fmt.Errorf("new person %s: age must be greater than zero: %w", id, ErrInvalidInput)
+	}
 	return Person{
 		id:   id,
 		name: name,
 		age:  age,
-	}
+	}, nil
 }
 
 func (p Person) ID() string   { return p.id }

@@ -3,6 +3,7 @@ package hospital
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 const maxPatients = 4 //every Doctor has max 4 patients -> reach limit -> not Available
@@ -13,11 +14,18 @@ type Doctor struct {
 	episodesAttended  []*EpisodeRecord
 }
 
-func NewDoctor(name string, age int, specialty string) *Doctor {
-	return &Doctor{
-		Person:    NewPerson(generateID(TypeDoctor), name, age),
-		specialty: specialty,
+func NewDoctor(name string, age int, specialty string) (*Doctor, error) {
+	if strings.TrimSpace(specialty) == "" {
+		return nil, fmt.Errorf("new doctor: specialty is required: %w", ErrInvalidInput)
 	}
+	person, err := NewPerson(generateID(TypeDoctor), name, age)
+	if err != nil {
+		return nil, fmt.Errorf("new doctor: %w", err)
+	}
+	return &Doctor{
+		Person:    person,
+		specialty: specialty,
+	}, nil
 }
 
 func (d *Doctor) Specialty() string             { return d.specialty }

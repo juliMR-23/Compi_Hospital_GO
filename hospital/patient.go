@@ -51,14 +51,21 @@ func (n NarcolepsyLevel) String() string {
 		return "Unknown"
 	}
 }
-func NewPatient(name string, age int, level NarcolepsyLevel) *Patient {
+func NewPatient(name string, age int, level NarcolepsyLevel) (*Patient, error) {
+	if level < Mild || level > Severe {
+		return nil, fmt.Errorf("new patient: narcolepsy level %d is out of range: %w", level, ErrInvalidInput)
+	}
+	person, err := NewPerson(generateID(TypePatient), name, age)
+	if err != nil {
+		return nil, fmt.Errorf("new patient: %w", err)
+	}
 	return &Patient{
-		Person:          NewPerson(generateID(TypePatient), name, age),
+		Person:          person,
 		level:           level,
 		currentLocation: "reception", //new patient -> no room yet
 		//room is nil by default
 		//PatientState is Awake by default
-	}
+	}, nil
 }
 
 func (p *Patient) Level() NarcolepsyLevel { return p.level }

@@ -2,19 +2,20 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"CompiHospitalGO/hospital"
 )
 
 func main() {
 	// 1. Create the hospital.
-	h := hospital.NewHospital("Hospital de los Costeños con Narcolepsia")
+	h := must(hospital.NewHospital("Hospital de los Costeños con Narcolepsia"))
 	fmt.Printf("=== %s ===\n\n", h.Name())
 
 	// 2. Hire 2 doctors and 1 orderly -> staff holds two different Attender types.
-	karen := hospital.NewDoctor("Karen Ospina", 41, "Neurología")
-	andres := hospital.NewDoctor("Andrés Bolaño", 37, "Neumología")
-	yeison := hospital.NewOrderly("Yeison Flórez", 29)
+	karen := must(hospital.NewDoctor("Karen Ospina", 41, "Neurología"))
+	andres := must(hospital.NewDoctor("Andrés Bolaño", 37, "Neumología"))
+	yeison := must(hospital.NewOrderly("Yeison Flórez", 29))
 	check(h.HireDoctor(karen))
 	check(h.HireDoctor(andres))
 	check(h.HireOrderly(yeison))
@@ -27,11 +28,11 @@ func main() {
 	}
 
 	// 4. Admit 5 patients (at least two of them Severe).
-	yeimy := hospital.NewPatient("Yeimy Padilla", 34, hospital.Severe)
-	elkin := hospital.NewPatient("Elkin Mendoza", 50, hospital.Moderate)
-	luz := hospital.NewPatient("Luz Marina Cuesta", 45, hospital.Mild)
-	wilfrido := hospital.NewPatient("Wilfrido Berrio", 62, hospital.Severe)
-	alexander := hospital.NewPatient("Alexander Ruiz", 28, hospital.Moderate)
+	yeimy := must(hospital.NewPatient("Yeimy Padilla", 34, hospital.Severe))
+	elkin := must(hospital.NewPatient("Elkin Mendoza", 50, hospital.Moderate))
+	luz := must(hospital.NewPatient("Luz Marina Cuesta", 45, hospital.Mild))
+	wilfrido := must(hospital.NewPatient("Wilfrido Berrio", 62, hospital.Severe))
+	alexander := must(hospital.NewPatient("Alexander Ruiz", 28, hospital.Moderate))
 	for _, p := range []*hospital.Patient{yeimy, elkin, luz, wilfrido, alexander} {
 		check(h.AdmitPatient(p))
 	}
@@ -107,6 +108,16 @@ func main() {
 	for p, count := range h.SevereReport() {
 		fmt.Printf("  %s %s: %d episode(s) today\n", p.ID(), p.Name(), count)
 	}
+}
+
+// must unwraps a (value, error) pair from a validated constructor. The demo uses
+// constant, valid input, so an error here means the program cannot run at all.
+func must[T any](value T, err error) T {
+	if err != nil {
+		fmt.Printf("  (fatal) %v\n", err)
+		os.Exit(1)
+	}
+	return value
 }
 
 func check(err error) {

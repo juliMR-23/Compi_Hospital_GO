@@ -10,10 +10,14 @@ type Orderly struct {
 	episodesAttended []*EpisodeRecord //as in doctor, this attender saves the history
 }
 
-func NewOrderly(name string, age int) *Orderly {
-	return &Orderly{
-		Person: NewPerson(generateID(TypeOrderly), name, age),
+func NewOrderly(name string, age int) (*Orderly, error) {
+	person, err := NewPerson(generateID(TypeOrderly), name, age)
+	if err != nil {
+		return nil, fmt.Errorf("new orderly: %w", err)
 	}
+	return &Orderly{
+		Person: person,
+	}, nil
 }
 
 func (o *Orderly) EpisodesAttended() []*EpisodeRecord { return slices.Clone(o.episodesAttended) }

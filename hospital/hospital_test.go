@@ -5,9 +5,45 @@ import (
 	"testing"
 )
 
+func mustHospital(t *testing.T, name string) *Hospital {
+	t.Helper()
+	h, err := NewHospital(name)
+	if err != nil {
+		t.Fatalf("NewHospital(%q): %v", name, err)
+	}
+	return h
+}
+
+func mustPatient(t *testing.T, name string, age int, level NarcolepsyLevel) *Patient {
+	t.Helper()
+	p, err := NewPatient(name, age, level)
+	if err != nil {
+		t.Fatalf("NewPatient(%q, %d, %v): %v", name, age, level, err)
+	}
+	return p
+}
+
+func mustDoctor(t *testing.T, name string, age int, specialty string) *Doctor {
+	t.Helper()
+	d, err := NewDoctor(name, age, specialty)
+	if err != nil {
+		t.Fatalf("NewDoctor(%q, %d, %q): %v", name, age, specialty, err)
+	}
+	return d
+}
+
+func mustOrderly(t *testing.T, name string, age int) *Orderly {
+	t.Helper()
+	o, err := NewOrderly(name, age)
+	if err != nil {
+		t.Fatalf("NewOrderly(%q, %d): %v", name, age, err)
+	}
+	return o
+}
+
 func newHospitalWithRooms(t *testing.T, numbers ...int) *Hospital {
 	t.Helper()
-	h := NewHospital("test hospital")
+	h := mustHospital(t, "test hospital")
 	for _, n := range numbers {
 		room, err := NewRoom(n, 1)
 		if err != nil {
@@ -20,9 +56,30 @@ func newHospitalWithRooms(t *testing.T, numbers ...int) *Hospital {
 	return h
 }
 
+func TestRegisterRoomRejectsDuplicateNumber(t *testing.T) {
+	h := mustHospital(t, "test hospital")
+	first, err := NewRoom(101, 1)
+	if err != nil {
+		t.Fatalf("NewRoom(101, 1): %v", err)
+	}
+	second, err := NewRoom(101, 2)
+	if err != nil {
+		t.Fatalf("NewRoom(101, 2): %v", err)
+	}
+	if err := h.RegisterRoom(first); err != nil {
+		t.Fatalf("RegisterRoom(first): %v", err)
+	}
+	if err := h.RegisterRoom(second); !errors.Is(err, ErrRoomAlreadyRegistered) {
+		t.Fatalf("RegisterRoom(second): err = %v, want it to wrap %v", err, ErrRoomAlreadyRegistered)
+	}
+	if len(h.Rooms()) != 1 {
+		t.Fatalf("rooms = %d, want 1 (the same room number must not be registered twice)", len(h.Rooms()))
+	}
+}
+
 func TestAssignRoomWithFreeRoom(t *testing.T) {
 	h := newHospitalWithRooms(t, 101)
-	p := NewPatient("Ana", 30, Mild)
+	p := mustPatient(t, "Ana", 30, Mild)
 	if err := h.AdmitPatient(p); err != nil {
 		t.Fatalf("AdmitPatient: %v", err)
 	}
@@ -51,7 +108,7 @@ func TestAssignRoomWithFreeRoom(t *testing.T) {
 func TestAssignRoomNoFreeRoom(t *testing.T) {
 	h := newHospitalWithRooms(t, 101)
 
-	first := NewPatient("Beto", 40, Mild)
+	first := mustPatient(t, "Beto", 40, Mild)
 	if err := h.AdmitPatient(first); err != nil {
 		t.Fatalf("AdmitPatient(first): %v", err)
 	}
@@ -62,7 +119,7 @@ func TestAssignRoomNoFreeRoom(t *testing.T) {
 		t.Fatalf("AssignRoom(first): %v", err)
 	}
 
-	second := NewPatient("Carla", 50, Severe)
+	second := mustPatient(t, "Carla", 50, Severe)
 	if err := h.AdmitPatient(second); err != nil {
 		t.Fatalf("AdmitPatient(second): %v", err)
 	}
@@ -88,8 +145,8 @@ func TestAssignRoomNoFreeRoom(t *testing.T) {
 func TestPatientsInHallway(t *testing.T) {
 	h := newHospitalWithRooms(t, 101)
 
-	hallway := NewPatient("Dora", 60, Mild)
-	roomed := NewPatient("Elías", 22, Mild)
+	hallway := mustPatient(t, "Dora", 60, Mild)
+	roomed := mustPatient(t, "Elías", 22, Mild)
 	for _, p := range []*Patient{hallway, roomed} {
 		if err := h.AdmitPatient(p); err != nil {
 			t.Fatalf("AdmitPatient: %v", err)
@@ -116,14 +173,14 @@ func TestPatientsInHallway(t *testing.T) {
 }
 
 func TestSevereReportCountsEpisodes(t *testing.T) {
-	h := NewHospital("test hospital")
-	doc := NewDoctor("Karen", 41, "Neurología")
+	h := mustHospital(t, "test hospital")
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
 	if err := h.HireDoctor(doc); err != nil {
 		t.Fatalf("HireDoctor: %v", err)
 	}
 
-	severe := NewPatient("Fabián", 55, Severe)
-	mild := NewPatient("Gloria", 33, Mild)
+	severe := mustPatient(t, "Fabián", 55, Severe)
+	mild := mustPatient(t, "Gloria", 33, Mild)
 	for _, p := range []*Patient{severe, mild} {
 		if err := h.AdmitPatient(p); err != nil {
 			t.Fatalf("AdmitPatient: %v", err)
@@ -151,15 +208,15 @@ func TestSevereReportCountsEpisodes(t *testing.T) {
 
 func TestAttenderPolymorphism(t *testing.T) {
 	staff := []Attender{
-		NewDoctor("Hugo", 45, "Neumología"),
-		NewOrderly("Inés", 29),
+		mustDoctor(t, "Hugo", 45, "Neumología"),
+		mustOrderly(t, "Inés", 29),
 	}
 	if len(staff) != 2 {
 		t.Fatalf("staff length = %d, want 2", len(staff))
 	}
 
 	for _, a := range staff {
-		p := NewPatient("Patient", 20, Mild)
+		p := mustPatient(t, "Patient", 20, Mild)
 		if err := p.SufferSleepAttack("hallway"); err != nil {
 			t.Fatalf("SufferSleepAttack: %v", err)
 		}
@@ -173,14 +230,43 @@ func TestAttenderPolymorphism(t *testing.T) {
 	}
 }
 
-func TestNewRoomRejectsInvalidCapacity(t *testing.T) {
+func TestNewRoomRejectsInvalidInput(t *testing.T) {
 	for _, capacity := range []int{0, -1} {
 		room, err := NewRoom(101, capacity)
-		if !errors.Is(err, ErrInvalidRoomCapacity) {
-			t.Fatalf("NewRoom(101, %d): err = %v, want it to wrap %v", capacity, err, ErrInvalidRoomCapacity)
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("NewRoom(101, %d): err = %v, want it to wrap %v", capacity, err, ErrInvalidInput)
 		}
 		if room != nil {
 			t.Fatalf("NewRoom(101, %d): room = %v, want nil", capacity, room)
+		}
+	}
+	for _, number := range []int{-1, -20} {
+		room, err := NewRoom(number, 1)
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("NewRoom(%d, 1): err = %v, want it to wrap %v", number, err, ErrInvalidInput)
+		}
+		if room != nil {
+			t.Fatalf("NewRoom(%d, 1): room = %v, want nil", number, room)
+		}
+	}
+}
+
+func TestConstructorsRejectInvalidInput(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"blank hospital name", func() error { _, err := NewHospital("   "); return err }()},
+		{"blank patient name", func() error { _, err := NewPatient("", 30, Mild); return err }()},
+		{"non-positive patient age", func() error { _, err := NewPatient("Ana", 0, Mild); return err }()},
+		{"out-of-range level", func() error { _, err := NewPatient("Ana", 30, NarcolepsyLevel(99)); return err }()},
+		{"blank doctor name", func() error { _, err := NewDoctor("", 30, "Neurología"); return err }()},
+		{"blank specialty", func() error { _, err := NewDoctor("Ana", 30, "  "); return err }()},
+		{"blank orderly name", func() error { _, err := NewOrderly("", 30); return err }()},
+	}
+	for _, tc := range cases {
+		if !errors.Is(tc.err, ErrInvalidInput) {
+			t.Fatalf("%s: err = %v, want it to wrap %v", tc.name, tc.err, ErrInvalidInput)
 		}
 	}
 }
@@ -190,9 +276,9 @@ func TestRoomAcceptsMultipleUntilCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRoom: %v", err)
 	}
-	first := NewPatient("Ana", 30, Mild)
-	second := NewPatient("Beto", 40, Mild)
-	third := NewPatient("Carla", 50, Mild)
+	first := mustPatient(t, "Ana", 30, Mild)
+	second := mustPatient(t, "Beto", 40, Mild)
+	third := mustPatient(t, "Carla", 50, Mild)
 
 	if !room.IsAvailable() || room.State() != Available {
 		t.Fatalf("fresh room: available=%v state=%v, want true/%v", room.IsAvailable(), room.State(), Available)
@@ -231,7 +317,7 @@ func TestRoomRejectsDuplicatePatient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRoom: %v", err)
 	}
-	p := NewPatient("Dora", 60, Mild)
+	p := mustPatient(t, "Dora", 60, Mild)
 	if err := room.Occupy(p); err != nil {
 		t.Fatalf("Occupy(p): %v", err)
 	}
@@ -244,7 +330,7 @@ func TestRoomRejectsDuplicatePatient(t *testing.T) {
 }
 
 func TestAssignRoomFillsCapacityBeforeNextRoom(t *testing.T) {
-	h := NewHospital("test hospital")
+	h := mustHospital(t, "test hospital")
 	for _, number := range []int{101, 102} {
 		room, err := NewRoom(number, 2)
 		if err != nil {
@@ -257,7 +343,7 @@ func TestAssignRoomFillsCapacityBeforeNextRoom(t *testing.T) {
 
 	want := []int{101, 101, 102}
 	for i, roomNumber := range want {
-		p := NewPatient("Patient", 20, Mild)
+		p := mustPatient(t, "Patient", 20, Mild)
 		if err := h.AdmitPatient(p); err != nil {
 			t.Fatalf("AdmitPatient(%d): %v", i, err)
 		}
@@ -275,13 +361,13 @@ func TestAssignRoomFillsCapacityBeforeNextRoom(t *testing.T) {
 }
 
 func TestDispatchUsesOrderlyWhenNoDoctor(t *testing.T) {
-	h := NewHospital("test hospital")
-	orderly := NewOrderly("Inés", 29)
+	h := mustHospital(t, "test hospital")
+	orderly := mustOrderly(t, "Inés", 29)
 	if err := h.HireOrderly(orderly); err != nil {
 		t.Fatalf("HireOrderly: %v", err)
 	}
 
-	p := NewPatient("Fabián", 55, Mild)
+	p := mustPatient(t, "Fabián", 55, Mild)
 	if err := h.AdmitPatient(p); err != nil {
 		t.Fatalf("AdmitPatient: %v", err)
 	}
@@ -302,9 +388,9 @@ func TestDispatchUsesOrderlyWhenNoDoctor(t *testing.T) {
 }
 
 func TestDispatchRotatesThroughStaff(t *testing.T) {
-	h := NewHospital("test hospital")
-	doc := NewDoctor("Karen", 41, "Neurología")
-	orderly := NewOrderly("Inés", 29)
+	h := mustHospital(t, "test hospital")
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
+	orderly := mustOrderly(t, "Inés", 29)
 	if err := h.HireDoctor(doc); err != nil {
 		t.Fatalf("HireDoctor: %v", err)
 	}
@@ -314,7 +400,7 @@ func TestDispatchRotatesThroughStaff(t *testing.T) {
 
 	got := make([]Attender, 0, 2)
 	for i := 0; i < 2; i++ {
-		p := NewPatient("Patient", 20, Mild)
+		p := mustPatient(t, "Patient", 20, Mild)
 		if err := h.AdmitPatient(p); err != nil {
 			t.Fatalf("AdmitPatient(%d): %v", i, err)
 		}
@@ -334,13 +420,13 @@ func TestDispatchRotatesThroughStaff(t *testing.T) {
 }
 
 func TestAttendHallwayPatients(t *testing.T) {
-	h := NewHospital("test hospital")
-	orderly := NewOrderly("Inés", 29)
+	h := mustHospital(t, "test hospital")
+	orderly := mustOrderly(t, "Inés", 29)
 	if err := h.HireOrderly(orderly); err != nil {
 		t.Fatalf("HireOrderly: %v", err)
 	}
 
-	stuck := NewPatient("Gloria", 33, Mild)
+	stuck := mustPatient(t, "Gloria", 33, Mild)
 	for _, p := range []*Patient{stuck} {
 		if err := h.AdmitPatient(p); err != nil {
 			t.Fatalf("AdmitPatient: %v", err)
