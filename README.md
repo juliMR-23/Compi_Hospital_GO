@@ -79,9 +79,11 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestPatientsInHallway` | The query returns only patients whose state is `AsleepInHallway`, not those already in bed. |
 | `TestSevereReportCountsEpisodes` | The severity report contains only `Severe` patients, each paired with their episode count taken from the hospital history. |
 | `TestAttenderPolymorphism` | A `[]Attender` holding a `Doctor` and an `Orderly` dispatches each one through the interface, and the episode records the right attender. |
-| `TestNewRoomRejectsInvalidCapacity` | `NewRoom` rejects `capacity <= 0` with a wrapped `ErrInvalidRoomCapacity` and returns `nil`. |
+| `TestNewRoomRejectsInvalidInput` | `NewRoom` rejects `capacity <= 0` and a negative room number with a wrapped `ErrInvalidInput` and returns `nil`. |
+| `TestConstructorsRejectInvalidInput` | `NewHospital`, `NewPatient`, `NewDoctor` and `NewOrderly` reject a blank name (and blank specialty), a non-positive age and an out-of-range narcolepsy level with a wrapped `ErrInvalidInput`. |
 | `TestRoomAcceptsMultipleUntilCapacity` | A capacity-2 room stays `Available` with a free slot, becomes `Occupied` only when full, refuses overflow with `ErrRoomOccupied`, and returns to `Available` after a release. |
 | `TestRoomRejectsDuplicatePatient` | The same patient cannot occupy two slots: a second `Occupy` wraps `ErrAlreadyInRoom` and does not add an occupant. |
+| `TestRegisterRoomRejectsDuplicateNumber` | The hospital refuses to register two rooms that share the same number, even when they are different objects, wrapping `ErrRoomAlreadyRegistered`. |
 | `TestAssignRoomFillsCapacityBeforeNextRoom` | `AssignRoom` fills the first room up to its capacity before spilling into the next one. |
 | `TestDispatchUsesOrderlyWhenNoDoctor` | With only an `Orderly` on staff, `Dispatch` selects it through the interface and records the episode in the history. |
 | `TestDispatchRotatesThroughStaff` | The round-robin cursor rotates dispatch across staff: first the doctor, then the orderly. |
@@ -93,7 +95,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 - **Encapsulation through packages.** Every struct keeps its fields unexported and exposes them through methods; the domain rules cannot be bypassed from outside the `hospital` package.
 - **Polymorphism with a real interface.** `Attender` is implemented by `Doctor` and `Orderly`, and the hospital stores its staff in a `[]Attender`. `Dispatch` calls `Attend` without any type assertion, so the concrete type is decided at runtime.
 - **Room state derived from capacity.** A room is `Available` as long as it has **at least one free slot**, and it is marked `Occupied` **only when it reaches full capacity**. `Occupy` refuses to overflow capacity and refuses the same patient twice; `Release` frees a slot and refreshes the state, so a room does not need to be completely empty to accept a new patient again.
-- **Validated construction.** `NewRoom` returns `(*Room, error)` and rejects `capacity <= 0`, so an invalid room can never be built.
+- **Validated construction.** Every constructor returns `(value, error)` and checks its own required fields before building the object: `NewHospital`, `NewPatient`, `NewDoctor` and `NewOrderly` reject a blank name (and blank specialty), a non-positive age and an out-of-range narcolepsy level, while `NewRoom` rejects a negative number or a non-positive capacity. All of them wrap the shared `ErrInvalidInput` sentinel with the specific field that failed, so an invalid entity can never be built.
 - **Typed state constants.** `PatientState`, `NarcolepsyLevel` and `RoomState` are named types with `iota` constants and a `String()` method, avoiding loose strings and giving readable output.
 - **Errors as values, never `panic`.** Every foreseeable failure returns a wrapped error using `fmt.Errorf("...: %w", ...)` and a sentinel error (e.g. `ErrNoFreeRoom`, `ErrRoomOccupied`), so callers can inspect them with `errors.Is`.
 - **Round-robin dispatch.** A cursor (`nextAttender`) walks the staff list so that an always-available attender cannot starve the rest; over several dispatches both concrete types are actually used.
