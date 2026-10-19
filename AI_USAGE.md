@@ -18,7 +18,7 @@
 - **Invalid entities could be built.** Constructors trusted their inputs and `NewRoom` had a bespoke `ErrInvalidRoomCapacity`. I made every constructor return `(value, error)`, validate its fields, and wrap one shared `ErrInvalidInput`.
 - **Episode history kept as a shared pointer.** `NewEpisode` returned a `*EpisodeRecord` stored in several places, so a record was a live handle to a mutable object. I made it a value (`NewEpisode` returns `EpisodeRecord`, stored as `[]EpisodeRecord`), so each record is a snapshot.
 - **Display concerns leaking into the model.** For the web bonus the AI wanted to add the lock and sleep/wake helpers straight into `Hospital`. I kept the model untouched and put the `sync.Mutex` and the HTTP handlers in the `web` package instead, so the interface is added without changing the domain (the hospital package contains no display code).
-- **Wrong sprite frame order.** The AI assumed the first row was the idle animation; comparing the pixels of `assets/Coste.png` showed the standing/idle frames on row 1 and the walking frames on row 0, so I remapped the CSS keyframes.
+- **Sprite strips: frame counts and offsets.** The AI assumed the animations all lived on one shared sheet; the real assets are one strip per animation with different frame counts (the vallenato idle alone has 23). I measured each PNG (width / frame width) to get the exact count, drove the CSS from custom properties, and gave every actor a negative `animation-delay` offset so the idles never run in sync.
 
 ## Learning Summary
 - Embedding `Person` in structs requires careful method receiver selection (pointer vs value)

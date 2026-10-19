@@ -10,8 +10,11 @@ Hospital management system for the *Hospital*, written in Go. It showcases idiom
 ```
 CompiHospitalGO/
 ├── main.go              demo scenario and all printing
-├── assets/
-│   └── Coste.png        Coste sprite sheet (14x14 frames: idle, walk, sleep)
+├── assets/              pixel-art strips, one PNG per animation
+│   ├── Coste-*.png      Coste: base, idle (blink), vallenato (23f), walk, asleep
+│   ├── Doctor-*.png     doctor: base, idle, walk (14x14 frames)
+│   ├── Orderly-*.png    orderly: base, idle, walk (14x14 frames)
+│   └── Cat-idle.png     wandering cat decoration (10x8 frames)
 ├── web/                 optional web interface (bonus): REST API + HTML/JS
 │   ├── main.go          JSON API, mutex and static server
 │   ├── main_test.go     handler tests
@@ -93,13 +96,13 @@ From the repository root:
 go run ./web
 ```
 
-Then open <http://localhost:8080>. The page shows the rooms, every patient with an animated Coste sprite (idle, walking and asleep), the action buttons, and the required queries. The sprite is read from `assets/Coste.png` at run time, so the command must be run from the repository root (use `-assets <dir>` to override).
+Then open <http://localhost:8080>. The page shows the rooms, the patients and the staff with their animated sprites, the two cats wandering as decoration, the action buttons, and the required queries. Every character is kept in its base pose and its idle animation is called with a per-actor offset so the loops never run in sync; an awake Coste mostly plays the vallenato (accordion) idle and blinks now and then. The strips are read from `assets/` at run time, so the command must be run from the repository root (use `-assets <dir>` to override).
 
 | Method and path | Purpose |
 |---|---|
 | `GET /api/state` | Full snapshot: staff, rooms, patients, hallway, history and severity report. |
 | `POST /api/action` | One mutation, JSON body `{"type": ..., "patient": ..., "location": ...}`. |
-| `GET /assets/Coste.png` | The sprite sheet. |
+| `GET /assets/*.png` | The animation strips (Coste, doctor, orderly and cat). |
 
 `POST /api/action` accepts these `type` values: `admit`, `sleep`, `wake`, `assign-room`, `dispatch`, `attend-hallway` and `reset`. Because `net/http` serves each request in its own goroutine, the web layer guards the hospital with its own `sync.Mutex`; the model itself is left untouched.
 
