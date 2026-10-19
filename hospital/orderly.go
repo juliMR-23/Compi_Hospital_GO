@@ -6,8 +6,8 @@ import (
 )
 
 type Orderly struct {
-	Person                            //is a person too, saves id, name and age
-	episodesAttended []*EpisodeRecord //as in doctor, this attender saves the history
+	Person                           //is a person too, saves id, name and age
+	episodesAttended []EpisodeRecord //as in doctor, this attender keeps value snapshots
 }
 
 func NewOrderly(name string, age int) (*Orderly, error) {
@@ -20,7 +20,7 @@ func NewOrderly(name string, age int) (*Orderly, error) {
 	}, nil
 }
 
-func (o *Orderly) EpisodesAttended() []*EpisodeRecord { return slices.Clone(o.episodesAttended) }
+func (o *Orderly) EpisodesAttended() []EpisodeRecord { return slices.Clone(o.episodesAttended) }
 
 // /methods from Attender interface
 func (o *Orderly) Attend(p *Patient, location string) (EpisodeRecord, error) {
@@ -32,5 +32,5 @@ func (o *Orderly) Attend(p *Patient, location string) (EpisodeRecord, error) {
 	}
 	episode := NewEpisode(p, o, location)
 	o.episodesAttended = append(o.episodesAttended, episode)
-	return *episode, nil //return value only
+	return episode, nil //value only, no pointer
 }

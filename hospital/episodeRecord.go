@@ -14,8 +14,11 @@ type EpisodeRecord struct {
 	room     *Room
 }
 
-func NewEpisode(patient *Patient, attender Attender, location string) *EpisodeRecord {
-	return &EpisodeRecord{
+// NewEpisode returns an EpisodeRecord by value (no pointer): the record is a
+// screenshot of what happened at this instant, so it is copied where it is
+// stored and never aliases the caller's variable.
+func NewEpisode(patient *Patient, attender Attender, location string) EpisodeRecord {
+	return EpisodeRecord{
 		id:       generateID(TypeEpisode),
 		dateTime: time.Now(),
 		patient:  patient,

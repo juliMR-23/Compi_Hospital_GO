@@ -11,7 +11,7 @@ type Hospital struct {
 	doctors      []*Doctor
 	patients     []*Patient
 	rooms        []*Room
-	history      []*EpisodeRecord
+	history      []EpisodeRecord
 	staff        []Attender //polymorphism: holds doctors and orderlies dispatched together
 	nextAttender int        //round-robin cursor: every emergency is attended, so the cursor rotates fairly across all staff
 }
@@ -25,12 +25,12 @@ func NewHospital(name string) (*Hospital, error) {
 	}, nil
 }
 
-func (h *Hospital) Name() string              { return h.name }
-func (h *Hospital) Doctors() []*Doctor        { return slices.Clone(h.doctors) }
-func (h *Hospital) Staff() []Attender         { return slices.Clone(h.staff) }
-func (h *Hospital) Patients() []*Patient      { return slices.Clone(h.patients) }
-func (h *Hospital) Rooms() []*Room            { return slices.Clone(h.rooms) }
-func (h *Hospital) History() []*EpisodeRecord { return slices.Clone(h.history) }
+func (h *Hospital) Name() string             { return h.name }
+func (h *Hospital) Doctors() []*Doctor       { return slices.Clone(h.doctors) }
+func (h *Hospital) Staff() []Attender        { return slices.Clone(h.staff) }
+func (h *Hospital) Patients() []*Patient     { return slices.Clone(h.patients) }
+func (h *Hospital) Rooms() []*Room           { return slices.Clone(h.rooms) }
+func (h *Hospital) History() []EpisodeRecord { return slices.Clone(h.history) }
 
 func (h *Hospital) AdmitPatient(p *Patient) error {
 	if p == nil {
@@ -103,7 +103,7 @@ func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) 
 	if err != nil {
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
-	if err := h.RegisterEpisode(&episode); err != nil { //the hospital keeps the history it coordinated, not the caller
+	if err := h.RegisterEpisode(episode); err != nil { //the hospital keeps the history it coordinated, not the caller
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
 	return episode, nil
@@ -149,11 +149,13 @@ func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
 	return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrNoFreeRoom)
 }
 
-func (h *Hospital) RegisterEpisode(e *EpisodeRecord) error {
-	if e == nil {
-		return fmt.Errorf("register episode: %w", ErrEpisodeNil)
+// RegisterEpisode stores a copy of the episode (an EpisodeRecord is a value, a
+// snapshot of what happened) and de-duplicates by episode id.
+func (h *Hospital) RegisterEpisode(e EpisodeRecord) error {
+	if e.ID() == "" {
+		return fmt.Errorf("register episode: missing id: %w", ErrInvalidInput) //a value cannot be nil; an empty id means an unbuilt record
 	}
-	if slices.ContainsFunc(h.history, func(ep *EpisodeRecord) bool { return ep.ID() == e.ID() }) {
+	if slices.ContainsFunc(h.history, func(existing EpisodeRecord) bool { return existing.ID() == e.ID() }) {
 		return fmt.Errorf("register episode %s: %w", e.ID(), ErrEpisodeAlreadyRegistered) //avoid duplicating the episode in the history
 	}
 	h.history = append(h.history, e)

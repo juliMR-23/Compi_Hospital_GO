@@ -11,7 +11,7 @@ type Doctor struct {
 	Person
 	specialty         string
 	patientsUnderCare []*Patient
-	episodesAttended  []*EpisodeRecord
+	episodesAttended  []EpisodeRecord //value records: each is a snapshot, not a shared pointer
 }
 
 func NewDoctor(name string, age int, specialty string) (*Doctor, error) {
@@ -32,11 +32,7 @@ func (d *Doctor) Specialty() string             { return d.specialty }
 func (d *Doctor) PatientsUnderCare() []*Patient { return slices.Clone(d.patientsUnderCare) }
 
 func (d *Doctor) MyEpisodes() []EpisodeRecord {
-	episodes := make([]EpisodeRecord, 0, len(d.episodesAttended))
-	for _, e := range d.episodesAttended {
-		episodes = append(episodes, *e)
-	}
-	return episodes
+	return slices.Clone(d.episodesAttended)
 }
 
 // / methods to implement the Attender interface
@@ -61,7 +57,7 @@ func (d *Doctor) Attend(p *Patient, location string) (EpisodeRecord, error) {
 	}
 	episode := NewEpisode(p, d, location)
 	d.episodesAttended = append(d.episodesAttended, episode) // attends the emergency (even if unavailable)
-	return *episode, nil                                     //* now takes away the pointer -> return value only
+	return episode, nil                                      //value only, no pointer
 }
 
 func (d *Doctor) DiagnosePatient(p *Patient) error {

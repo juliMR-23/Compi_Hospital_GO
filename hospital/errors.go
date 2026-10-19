@@ -6,7 +6,6 @@ var (
 	ErrDocUnavailable           = errors.New("doctor is not available yet")
 	ErrPatientNil               = errors.New("patient is nil here")
 	ErrDoctorNil                = errors.New("doctor is nil here")
-	ErrEpisodeNil               = errors.New("episode record is nil here")
 	ErrIsAwake                  = errors.New("patient is already awake")
 	ErrIsAsleep                 = errors.New("patient is already asleep")
 	ErrNoFreeRoom               = errors.New("no free rooms at this time")

@@ -325,6 +325,35 @@ func TestDoctorAttendsEmergencyAtCapacity(t *testing.T) {
 	}
 }
 
+func TestEpisodeRecordIsValueSnapshot(t *testing.T) {
+	doc := mustDoctor(t, "Karen", 41, "Neurología")
+	p := mustPatient(t, "Yeimy", 30, Severe)
+	if err := p.SufferSleepAttack("cafetería"); err != nil {
+		t.Fatalf("SufferSleepAttack: %v", err)
+	}
+
+	episode, err := doc.Attend(p, "cafetería")
+	if err != nil {
+		t.Fatalf("Attend: %v", err)
+	}
+	id := episode.ID()
+
+	// EpisodeRecord is a value: mutating the caller's copy must not touch the
+	// snapshot the doctor stored.
+	episode.location = "mutated elsewhere"
+
+	stored := doc.MyEpisodes()
+	if len(stored) != 1 {
+		t.Fatalf("doctor episodes = %d, want 1", len(stored))
+	}
+	if stored[0].Location() != "cafetería" {
+		t.Fatalf("stored episode location = %q, want %q (a stored copy must stay a snapshot)", stored[0].Location(), "cafetería")
+	}
+	if stored[0].ID() != id {
+		t.Fatalf("stored episode id = %q, want %q", stored[0].ID(), id)
+	}
+}
+
 func TestNewRoomRejectsInvalidInput(t *testing.T) {
 	for _, capacity := range []int{0, -1} {
 		room, err := NewRoom(101, capacity)
