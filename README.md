@@ -19,6 +19,10 @@ CompiHospitalGO/
 │   ├── main.go          JSON API, mutex and static server
 │   ├── main_test.go     handler tests
 │   └── static/          index.html, app.js, style.css
+├── GUI/                 optional ward game (bonus): canvas + JSON API
+│   ├── main.go          ward API, mutex, narcolepsy goroutine, static server
+│   ├── main_test.go     handler tests
+│   └── static/          index.html, game.js, game.css
 └── hospital/
     ├── hospital.go      Hospital: admit/hire, dispatch, AssignRoom, queries
     ├── attender.go      Attender interface (implemented by Doctor and Orderly)
@@ -106,6 +110,26 @@ Then open <http://localhost:8080>. The page shows the rooms, the patients and th
 
 `POST /api/action` accepts these `type` values: `admit`, `sleep`, `wake`, `assign-room`, `dispatch`, `attend-hallway` and `reset`. Because `net/http` serves each request in its own goroutine, the web layer guards the hospital with its own `sync.Mutex`; the model itself is left untouched.
 
+## Ward game (bonus)
+
+"Coste on the ward" is a second interface: a top-down arcade game that reuses the same `hospital` package (again untouched) through a small JSON API. Coste walks the ward with the arrow keys or WASD; brushing against a sleeping patient wakes them, and pressing **SPACE** plays the vallenato accordion as an area attack that rouses every patient within a wide radius, on a short cooldown. A background goroutine makes the narcolepsy strike again every few seconds, so patients keep dozing off and the score keeps moving.
+
+From the repository root:
+
+```bash
+go run ./GUI
+```
+
+Then open <http://localhost:8081>. As with the viewer, the animation strips are read from `assets/` at run time, so run it from the repository root (`-assets <dir>` and `-addr :port` override the defaults).
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/ward` | Snapshot of the ward: every patient with its state, plus the staff. |
+| `POST /api/wake` | Wake one patient, JSON body `{"patient": "P-001"}`. |
+| `POST /api/vallenato` | Wake several at once, JSON body `{"patients": ["P-001", ...]}`. |
+| `POST /api/reset` | Put the whole ward back to sleep and start a new round. |
+| `GET /assets/*.png` | The animation strips. |
+
 ## How to run the tests
 
 ```bash
@@ -126,9 +150,12 @@ go test -race ./...
 > You should see this summary at the end:
 > ```text
 > ?    CompiHospitalGO           [no test files]
+> ok   CompiHospitalGO/GUI
 > ok   CompiHospitalGO/hospital
 > ok   CompiHospitalGO/web
 > ```
+>
+> `go test -race` needs a C toolchain (cgo); without one, use the plain `go test ./...`.
 
 ## Tests
 
@@ -149,6 +176,8 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestAttendHallwayPatients` | Dispatches an attender to every patient in a hallway. |
 
 The web interface has its own suite in `web/main_test.go` (black-box over `package main`): `TestStateEndpoint` checks the JSON snapshot, and `TestActionAdmit`, `TestActionSleepAssignWake`, `TestActionErrors` and `TestActionAttendHallway` drive the API with `httptest`.
+
+The game server has a matching suite in `GUI/main_test.go`: `TestWardStartsAsleep`, `TestWakeRousesOnePatient`, `TestWakeIsIdempotent`, `TestVallenatoWakesSeveral`, `TestWakeUnknownPatient`, `TestResetPutsEveryoneBackToSleep` and `TestWakeRejectsGet` exercise the ward endpoints.
 
 ## Design decisions
 
