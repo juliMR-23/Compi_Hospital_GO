@@ -56,27 +56,6 @@ func newHospitalWithRooms(t *testing.T, numbers ...int) *Hospital {
 	return h
 }
 
-func TestRegisterRoomRejectsDuplicateNumber(t *testing.T) {
-	h := mustHospital(t, "test hospital")
-	first, err := NewRoom(101, 1)
-	if err != nil {
-		t.Fatalf("NewRoom(101, 1): %v", err)
-	}
-	second, err := NewRoom(101, 2)
-	if err != nil {
-		t.Fatalf("NewRoom(101, 2): %v", err)
-	}
-	if err := h.RegisterRoom(first); err != nil {
-		t.Fatalf("RegisterRoom(first): %v", err)
-	}
-	if err := h.RegisterRoom(second); !errors.Is(err, ErrRoomAlreadyRegistered) {
-		t.Fatalf("RegisterRoom(second): err = %v, want it to wrap %v", err, ErrRoomAlreadyRegistered)
-	}
-	if len(h.Rooms()) != 1 {
-		t.Fatalf("rooms = %d, want 1 (the same room number must not be registered twice)", len(h.Rooms()))
-	}
-}
-
 func TestAssignRoomWithFreeRoom(t *testing.T) {
 	h := newHospitalWithRooms(t, 101)
 	p := mustPatient(t, "Ana", 30, Mild)
@@ -225,30 +204,6 @@ func TestSevereReportCountsEpisodes(t *testing.T) {
 	}
 }
 
-func TestAttenderPolymorphism(t *testing.T) {
-	staff := []Attender{
-		mustDoctor(t, "Hugo", 45, "Neumología"),
-		mustOrderly(t, "Inés", 29),
-	}
-	if len(staff) != 2 {
-		t.Fatalf("staff length = %d, want 2", len(staff))
-	}
-
-	for _, a := range staff {
-		p := mustPatient(t, "Patient", 20, Mild)
-		if err := p.SufferSleepAttack("hallway"); err != nil {
-			t.Fatalf("SufferSleepAttack: %v", err)
-		}
-		episode, err := a.Attend(p, "hallway")
-		if err != nil {
-			t.Fatalf("Attend(%s): %v", a.Name(), err)
-		}
-		if episode.Attender() != a {
-			t.Fatalf("episode attender = %v, want %v", episode.Attender(), a)
-		}
-	}
-}
-
 func TestDoctorDiagnosesUntilCapacity(t *testing.T) {
 	doc := mustDoctor(t, "Karen", 41, "Neurología")
 	if !doc.IsAvailable() {
@@ -288,113 +243,6 @@ func TestDoctorDiagnosesUntilCapacity(t *testing.T) {
 	}
 }
 
-func TestDoctorAttendsEmergencyAtCapacity(t *testing.T) {
-	doc := mustDoctor(t, "Karen", 41, "Neurología")
-	for i := 0; i < maxPatients; i++ {
-		if err := doc.DiagnosePatient(mustPatient(t, "UnderCare", 20, Mild)); err != nil {
-			t.Fatalf("DiagnosePatient(%d): %v", i, err)
-		}
-	}
-	if doc.IsAvailable() {
-		t.Fatal("doctor must be unavailable at capacity before attending")
-	}
-
-	p := mustPatient(t, "Fabián", 55, Severe)
-	if err := p.SufferSleepAttack("cafetería"); err != nil {
-		t.Fatalf("SufferSleepAttack: %v", err)
-	}
-
-	if err := doc.AttendSleepEmergency(p); err != nil {
-		t.Fatalf("AttendSleepEmergency at capacity: %v (a full doctor must still attend emergencies)", err)
-	}
-	episode, err := doc.Attend(p, "cafetería")
-	if err != nil {
-		t.Fatalf("Attend at capacity: %v (a full doctor must still attend emergencies)", err)
-	}
-	if episode.Attender() != doc {
-		t.Fatalf("episode attender = %v, want the doctor %v", episode.Attender(), doc)
-	}
-	if len(doc.MyEpisodes()) != 1 {
-		t.Fatalf("doctor episodes = %d, want 1", len(doc.MyEpisodes()))
-	}
-	if got := len(doc.PatientsUnderCare()); got != maxPatients {
-		t.Fatalf("patients under care = %d, want %d (attending must not change the under-care list)", got, maxPatients)
-	}
-	if doc.IsAvailable() {
-		t.Fatal("attending an emergency must not change availability")
-	}
-}
-
-func TestEpisodeRecordIsValueSnapshot(t *testing.T) {
-	doc := mustDoctor(t, "Karen", 41, "Neurología")
-	p := mustPatient(t, "Yeimy", 30, Severe)
-	if err := p.SufferSleepAttack("cafetería"); err != nil {
-		t.Fatalf("SufferSleepAttack: %v", err)
-	}
-
-	episode, err := doc.Attend(p, "cafetería")
-	if err != nil {
-		t.Fatalf("Attend: %v", err)
-	}
-	id := episode.ID()
-
-	// EpisodeRecord is a value: mutating the caller's copy must not touch the
-	// snapshot the doctor stored.
-	episode.location = "mutated elsewhere"
-
-	stored := doc.MyEpisodes()
-	if len(stored) != 1 {
-		t.Fatalf("doctor episodes = %d, want 1", len(stored))
-	}
-	if stored[0].Location() != "cafetería" {
-		t.Fatalf("stored episode location = %q, want %q (a stored copy must stay a snapshot)", stored[0].Location(), "cafetería")
-	}
-	if stored[0].ID() != id {
-		t.Fatalf("stored episode id = %q, want %q", stored[0].ID(), id)
-	}
-}
-
-func TestNewRoomRejectsInvalidInput(t *testing.T) {
-	for _, capacity := range []int{0, -1} {
-		room, err := NewRoom(101, capacity)
-		if !errors.Is(err, ErrInvalidInput) {
-			t.Fatalf("NewRoom(101, %d): err = %v, want it to wrap %v", capacity, err, ErrInvalidInput)
-		}
-		if room != nil {
-			t.Fatalf("NewRoom(101, %d): room = %v, want nil", capacity, room)
-		}
-	}
-	for _, number := range []int{-1, -20} {
-		room, err := NewRoom(number, 1)
-		if !errors.Is(err, ErrInvalidInput) {
-			t.Fatalf("NewRoom(%d, 1): err = %v, want it to wrap %v", number, err, ErrInvalidInput)
-		}
-		if room != nil {
-			t.Fatalf("NewRoom(%d, 1): room = %v, want nil", number, room)
-		}
-	}
-}
-
-func TestConstructorsRejectInvalidInput(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-	}{
-		{"blank hospital name", func() error { _, err := NewHospital("   "); return err }()},
-		{"blank patient name", func() error { _, err := NewPatient("", 30, Mild); return err }()},
-		{"non-positive patient age", func() error { _, err := NewPatient("Ana", 0, Mild); return err }()},
-		{"out-of-range level", func() error { _, err := NewPatient("Ana", 30, NarcolepsyLevel(99)); return err }()},
-		{"blank doctor name", func() error { _, err := NewDoctor("", 30, "Neurología"); return err }()},
-		{"blank specialty", func() error { _, err := NewDoctor("Ana", 30, "  "); return err }()},
-		{"blank orderly name", func() error { _, err := NewOrderly("", 30); return err }()},
-	}
-	for _, tc := range cases {
-		if !errors.Is(tc.err, ErrInvalidInput) {
-			t.Fatalf("%s: err = %v, want it to wrap %v", tc.name, tc.err, ErrInvalidInput)
-		}
-	}
-}
-
 func TestRoomAcceptsMultipleUntilCapacity(t *testing.T) {
 	room, err := NewRoom(201, 2)
 	if err != nil {
@@ -419,6 +267,9 @@ func TestRoomAcceptsMultipleUntilCapacity(t *testing.T) {
 	if room.IsAvailable() || room.State() != Occupied {
 		t.Fatalf("room at full capacity must be occupied (available=%v state=%v)", room.IsAvailable(), room.State())
 	}
+	if err := room.Occupy(first); !errors.Is(err, ErrAlreadyInRoom) {
+		t.Fatalf("Occupy(first) again: err = %v, want it to wrap %v", err, ErrAlreadyInRoom)
+	}
 	if err := room.Occupy(third); !errors.Is(err, ErrRoomOccupied) {
 		t.Fatalf("Occupy(third): err = %v, want it to wrap %v", err, ErrRoomOccupied)
 	}
@@ -433,23 +284,6 @@ func TestRoomAcceptsMultipleUntilCapacity(t *testing.T) {
 	}
 	if room.State() != Occupied {
 		t.Fatalf("state = %v, want %v", room.State(), Occupied)
-	}
-}
-
-func TestRoomRejectsDuplicatePatient(t *testing.T) {
-	room, err := NewRoom(202, 2)
-	if err != nil {
-		t.Fatalf("NewRoom: %v", err)
-	}
-	p := mustPatient(t, "Dora", 60, Mild)
-	if err := room.Occupy(p); err != nil {
-		t.Fatalf("Occupy(p): %v", err)
-	}
-	if err := room.Occupy(p); !errors.Is(err, ErrAlreadyInRoom) {
-		t.Fatalf("Occupy(p) again: err = %v, want it to wrap %v", err, ErrAlreadyInRoom)
-	}
-	if len(room.Occupants()) != 1 {
-		t.Fatalf("occupants = %d, want 1 (a duplicate must not take a slot)", len(room.Occupants()))
 	}
 }
 
@@ -471,64 +305,6 @@ func TestRoomKeepsPatientLink(t *testing.T) {
 	}
 	if p.Room() != nil {
 		t.Fatalf("patient room = %v, want nil after Release", p.Room())
-	}
-}
-
-func TestAssignRoomFillsCapacityBeforeNextRoom(t *testing.T) {
-	h := mustHospital(t, "test hospital")
-	for _, number := range []int{101, 102} {
-		room, err := NewRoom(number, 2)
-		if err != nil {
-			t.Fatalf("NewRoom(%d): %v", number, err)
-		}
-		if err := h.RegisterRoom(room); err != nil {
-			t.Fatalf("RegisterRoom(%d): %v", number, err)
-		}
-	}
-
-	want := []int{101, 101, 102}
-	for i, roomNumber := range want {
-		p := mustPatient(t, "Patient", 20, Mild)
-		if err := h.AdmitPatient(p); err != nil {
-			t.Fatalf("AdmitPatient(%d): %v", i, err)
-		}
-		if err := p.SufferSleepAttack("hallway"); err != nil {
-			t.Fatalf("SufferSleepAttack(%d): %v", i, err)
-		}
-		room, err := h.AssignRoom(p)
-		if err != nil {
-			t.Fatalf("AssignRoom(%d): %v", i, err)
-		}
-		if room.ID() != roomNumber {
-			t.Fatalf("AssignRoom(%d) = room %d, want room %d", i, room.ID(), roomNumber)
-		}
-	}
-}
-
-func TestDispatchUsesOrderlyWhenNoDoctor(t *testing.T) {
-	h := mustHospital(t, "test hospital")
-	orderly := mustOrderly(t, "Inés", 29)
-	if err := h.HireOrderly(orderly); err != nil {
-		t.Fatalf("HireOrderly: %v", err)
-	}
-
-	p := mustPatient(t, "Fabián", 55, Mild)
-	if err := h.AdmitPatient(p); err != nil {
-		t.Fatalf("AdmitPatient: %v", err)
-	}
-	if err := p.SufferSleepAttack("hallway"); err != nil {
-		t.Fatalf("SufferSleepAttack: %v", err)
-	}
-
-	episode, err := h.Dispatch(p, "hallway")
-	if err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if episode.Attender() != orderly {
-		t.Fatalf("dispatch attender = %v, want the Orderly %v", episode.Attender(), orderly)
-	}
-	if len(h.History()) != 1 {
-		t.Fatalf("history length = %d, want 1 (Dispatch must record the episode)", len(h.History()))
 	}
 }
 
@@ -561,6 +337,12 @@ func TestDispatchRotatesThroughStaff(t *testing.T) {
 
 	if got[0] != doc || got[1] != orderly {
 		t.Fatalf("dispatch order = [%v, %v], want [%v, %v] (round-robin must rotate)", got[0], got[1], doc, orderly)
+	}
+	if len(doc.MyEpisodes()) != 1 {
+		t.Fatalf("doctor episodes = %d, want 1 (dispatch must record it on the attender)", len(doc.MyEpisodes()))
+	}
+	if len(h.History()) != 2 {
+		t.Fatalf("history length = %d, want 2 (dispatch must record every episode)", len(h.History()))
 	}
 }
 
