@@ -27,10 +27,40 @@ const HALLWAY_LOCATIONS = [
   "pasillo de urgencias",
 ];
 
+// Each animation is its own PNG strip: frames side by side, transparent gaps.
+// Coste/doctor/orderly are 14x14 frames; the cat is 10x8.
+const SPRITES = {
+  coste: {
+    base: { sheet: "Coste-base.png", frames: 1, dur: "1.2s" },
+    blink: { sheet: "Coste-idle1-eyes.png", frames: 2, dur: "1s" },
+    vallenato: { sheet: "Coste-idle2-acordeon.png", frames: 23, dur: "1.5s" },
+    walk: { sheet: "Coste-walk.png", frames: 4, dur: "0.5s" },
+    asleep: { sheet: "Coste-asleep.png", frames: 10, dur: "1.4s" },
+  },
+  doctor: {
+    idle: { sheet: "Doctor-idle.png", frames: 2, dur: "1.1s" },
+    walk: { sheet: "Doctor-walk.png", frames: 4, dur: "0.5s" },
+  },
+  orderly: {
+    idle: { sheet: "Orderly-idle.png", frames: 2, dur: "1.1s" },
+    walk: { sheet: "Orderly-walk.png", frames: 4, dur: "0.5s" },
+  },
+  cat: {
+    idle: { sheet: "Cat-idle.png", frames: 4, dur: "1.3s" },
+  },
+};
+
+const GOTO_HALLWAY = 1000; // ms the walk frame is held while a patient moves
+
 let state = null;
-const cards = new Map(); // patient id -> { el, sprite, name, meta }
+let lastHistoryLength = -1;
+
+const cards = new Map(); // patient id -> { el, sprite, name, meta, idleTimer }
 const prevKey = new Map(); // patient id -> last stateKey
 const walkUntil = new Map(); // patient id -> timestamp until which Walk plays
+
+const staffCards = new Map(); // staff id -> { el, sprite, name, meta }
+const staffWalkUntil = new Map(); // staff id -> timestamp until which Walk plays
 
 function findPatient(id) {
   return state ? state.patients.find((p) => p.id === id) : null;
@@ -40,6 +70,28 @@ function pickLocation() {
   return HALLWAY_LOCATIONS[Math.floor(Math.random() * HALLWAY_LOCATIONS.length)];
 }
 
+// --- sprite helpers ----------------------------------------------------------
+
+function setAnim(el, anim) {
+  if (el.dataset.sheet === anim.sheet && el.dataset.frames === String(anim.frames)) return;
+  el.dataset.sheet = anim.sheet;
+  el.dataset.frames = String(anim.frames);
+  el.style.setProperty("--sheet", `url("/assets/${anim.sheet}")`);
+  el.style.setProperty("--frames", String(anim.frames));
+  el.style.setProperty("--dur", anim.dur);
+  if (!el.style.getPropertyValue("--delay")) {
+    // A negative delay starts the loop mid-way, so idles never run in sync.
+    const seconds = Number.parseFloat(anim.dur);
+    el.style.setProperty("--delay", `-${(Math.random() * seconds).toFixed(2)}s`);
+  }
+}
+
+function newSprite(extraClass) {
+  const el = document.createElement("div");
+  el.className = extraClass ? "sprite " + extraClass : "sprite";
+  return el;
+}
+
 // --- rendering ---------------------------------------------------------------
 
 function render(data) {
@@ -47,19 +99,10 @@ function render(data) {
   document.getElementById("hospital-name").textContent = data.name;
   renderRooms(data);
   renderPatients(data);
+  renderStaff(data);
   renderQueries(data);
-}
-
-function spriteClass(p) {
-  if ((walkUntil.get(p.id) || 0) > Date.now()) return "walk";
-  if (p.stateKey === "Awake") return "idle";
-  return "sleep";
-}
-
-function applySprite(card, cls) {
-  if (card.sprite.dataset.anim === cls) return;
-  card.sprite.dataset.anim = cls;
-  card.sprite.className = "sprite " + cls;
+  renderDecor();
+  detectWalks(data);
 }
 
 function renderPatients(data) {
@@ -69,14 +112,15 @@ function renderPatients(data) {
     seen.add(p.id);
     let card = cards.get(p.id);
     if (!card) {
-      card = createCard(p);
+      card = createPatientCard(p);
       cards.set(p.id, card);
       wrap.appendChild(card.el);
     }
-    updateCard(card, p);
+    updatePatientCard(card, p);
   }
   for (const [id, card] of cards) {
     if (!seen.has(id)) {
+      stopIdle(card);
       card.el.remove();
       cards.delete(id);
       prevKey.delete(id);
@@ -85,12 +129,11 @@ function renderPatients(data) {
   }
 }
 
-function createCard(p) {
+function createPatientCard(p) {
   const el = document.createElement("div");
   el.className = "patient";
 
-  const sprite = document.createElement("div");
-  sprite.className = "sprite";
+  const sprite = newSprite();
 
   const info = document.createElement("div");
   const name = document.createElement("div");
@@ -120,22 +163,33 @@ function createCard(p) {
 
   info.append(name, meta, actions);
   el.append(sprite, info);
-  return { el, sprite, name, meta };
+  return { el, sprite, name, meta, idleTimer: null };
 }
 
-function updateCard(card, p) {
+function updatePatientCard(card, p) {
   const previous = prevKey.get(p.id);
   if (previous !== undefined && previous !== p.stateKey) {
-    // The patient just changed place: play Walk for a moment before settling.
-    walkUntil.set(p.id, Date.now() + 900);
+    walkUntil.set(p.id, Date.now() + GOTO_HALLWAY);
     window.setTimeout(() => {
       const latest = findPatient(p.id);
-      if (latest) updateCard(card, latest);
-    }, 950);
+      if (latest) updatePatientCard(card, latest);
+    }, GOTO_HALLWAY + 50);
   }
   prevKey.set(p.id, p.stateKey);
 
-  applySprite(card, spriteClass(p));
+  const walking = (walkUntil.get(p.id) || 0) > Date.now();
+  if (walking) {
+    stopIdle(card);
+    card.sprite.classList.remove("sleep");
+    setAnim(card.sprite, SPRITES.coste.walk);
+  } else if (p.stateKey === "Awake") {
+    card.sprite.classList.remove("sleep");
+    startIdle(card);
+  } else {
+    stopIdle(card);
+    card.sprite.classList.add("sleep");
+    setAnim(card.sprite, SPRITES.coste.asleep);
+  }
 
   card.name.textContent = p.id + " · " + p.name;
 
@@ -149,6 +203,96 @@ function updateCard(card, p) {
     badge,
     document.createTextNode(" " + p.state + " · " + where + " · age " + p.age),
   );
+}
+
+// An awake Coste mostly plays the vallenato (accordion) idle and blinks now and
+// then, so the animation the artist put effort into is front and centre.
+function startIdle(card) {
+  if (card.idleTimer) return;
+  const playVallenato = () => {
+    setAnim(card.sprite, SPRITES.coste.vallenato);
+    card.idleTimer = window.setTimeout(() => {
+      setAnim(card.sprite, SPRITES.coste.blink);
+      card.idleTimer = window.setTimeout(playVallenato, 1400 + Math.random() * 1600);
+    }, 2600 + Math.random() * 2200);
+  };
+  playVallenato();
+}
+
+function stopIdle(card) {
+  if (card.idleTimer) {
+    window.clearTimeout(card.idleTimer);
+    card.idleTimer = null;
+  }
+}
+
+function renderStaff(data) {
+  const wrap = document.getElementById("staff");
+  const seen = new Set();
+  for (const s of data.staff) {
+    seen.add(s.id);
+    let card = staffCards.get(s.id);
+    if (!card) {
+      card = createStaffCard(s);
+      staffCards.set(s.id, card);
+      wrap.appendChild(card.el);
+    }
+    updateStaffCard(card, s);
+  }
+  for (const [id, card] of staffCards) {
+    if (!seen.has(id)) {
+      card.el.remove();
+      staffCards.delete(id);
+      staffWalkUntil.delete(id);
+    }
+  }
+}
+
+function createStaffCard(s) {
+  const el = document.createElement("div");
+  el.className = "member";
+  const sprite = newSprite();
+  const info = document.createElement("div");
+  const name = document.createElement("div");
+  name.className = "name";
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  info.append(name, meta);
+  el.append(sprite, info);
+  return { el, sprite, name, meta };
+}
+
+function updateStaffCard(card, s) {
+  const set = s.role === "Doctor" ? SPRITES.doctor : SPRITES.orderly;
+  const walking = (staffWalkUntil.get(s.id) || 0) > Date.now();
+  setAnim(card.sprite, walking ? set.walk : set.idle);
+  card.name.textContent = s.id + " · " + s.name;
+  card.meta.textContent = s.role + (s.specialty ? " · " + s.specialty : "");
+}
+
+// When a new episode shows up, the attender that just responded walks to it.
+function detectWalks(data) {
+  if (lastHistoryLength >= 0 && data.history.length > lastHistoryLength) {
+    const latest = data.history[data.history.length - 1];
+    staffWalkUntil.set(latest.attender, Date.now() + GOTO_HALLWAY + 400);
+    window.setTimeout(() => {
+      const card = staffCards.get(latest.attender);
+      const staff = state && state.staff.find((x) => x.id === latest.attender);
+      if (card && staff) updateStaffCard(card, staff);
+    }, GOTO_HALLWAY + 450);
+  }
+  lastHistoryLength = data.history.length;
+}
+
+function renderDecor() {
+  const wrap = document.getElementById("decor");
+  if (wrap.childElementCount) return;
+  for (let i = 0; i < 2; i++) {
+    const cat = newSprite("cat");
+    cat.style.setProperty("--scale", i === 1 ? "5" : "4");
+    setAnim(cat, SPRITES.cat.idle);
+    wrap.appendChild(cat);
+  }
 }
 
 function renderRooms(data) {
@@ -170,9 +314,8 @@ function renderRooms(data) {
     el.append(head, meta);
 
     for (const id of r.occupants) {
-      const sprite = document.createElement("div");
-      sprite.className = "sprite sleep";
-      sprite.style.margin = "0 auto";
+      const sprite = newSprite("sleep");
+      setAnim(sprite, SPRITES.coste.asleep);
       el.appendChild(sprite);
 
       const label = document.createElement("div");
@@ -291,10 +434,15 @@ document.getElementById("attend-hallway").addEventListener("click", () => {
 });
 
 document.getElementById("reset").addEventListener("click", () => {
+  cards.forEach(stopIdle);
   cards.forEach((card) => card.el.remove());
   cards.clear();
   prevKey.clear();
   walkUntil.clear();
+  staffCards.forEach((card) => card.el.remove());
+  staffCards.clear();
+  staffWalkUntil.clear();
+  lastHistoryLength = -1;
   run({ type: "reset" });
 });
 

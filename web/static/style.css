@@ -24,7 +24,7 @@ body {
 
 header {
   text-align: center;
-  padding: 1.6rem 1rem 0.6rem;
+  padding: 1.4rem 1rem 0.4rem;
 }
 
 header h1 {
@@ -37,6 +37,26 @@ header h1 {
   margin: 0.3rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* the cats wander across the header as decoration */
+.decor {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  min-height: 40px;
+  margin-top: 0.5rem;
+}
+.decor .sprite {
+  animation: sprite-sheet var(--dur) steps(var(--frames)) infinite, wander 14s ease-in-out infinite;
+}
+.decor .sprite:nth-child(2) {
+  animation: sprite-sheet var(--dur) steps(var(--frames)) infinite, wander 18s ease-in-out infinite reverse;
+}
+
+@keyframes wander {
+  0%, 100% { transform: translateX(-40px) scaleX(1); }
+  50% { transform: translateX(40px) scaleX(1); }
 }
 
 main {
@@ -102,6 +122,54 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
   flex-wrap: wrap;
 }
 
+/* --- pixel-art sprite: frames laid left-to-right in one PNG each ---
+   Sizes are driven by custom properties so one rule covers every actor:
+   --fw/--fh  frame size in pixels (14x14 people, 10x8 cat)
+   --scale    integer upscale (keeps the pixels crisp)
+   --frames   number of frames in the strip
+   --dur      loop duration
+   --delay    per-actor offset so the idles never run in sync */
+.sprite {
+  --fw: 14;
+  --fh: 14;
+  --scale: 4;
+  --frames: 1;
+  --dur: 1s;
+  --delay: 0s;
+  width: calc(var(--fw) * var(--scale) * 1px);
+  height: calc(var(--fh) * var(--scale) * 1px);
+  flex: 0 0 auto;
+  background-image: var(--sheet, none);
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: calc(var(--frames) * var(--fw) * var(--scale) * 1px) calc(var(--fh) * var(--scale) * 1px);
+  image-rendering: pixelated;
+  animation: sprite-sheet var(--dur) steps(var(--frames)) infinite;
+  animation-delay: var(--delay);
+}
+
+.sprite.cat { --fw: 10; --fh: 8; }
+
+@keyframes sprite-sheet {
+  from { background-position: 0 0; }
+  to { background-position: calc(var(--frames) * var(--fw) * var(--scale) * -1px) 0; }
+}
+
+.sprite.sleep { position: relative; }
+.sprite.sleep::after {
+  content: "z";
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  color: var(--asleep);
+  font-weight: 700;
+  animation: floatz 1.6s ease-in-out infinite;
+}
+@keyframes floatz {
+  0%, 100% { opacity: 0.2; transform: translateY(0) scale(0.9); }
+  50% { opacity: 1; transform: translateY(-6px) scale(1.15); }
+}
+
 /* --- rooms --- */
 .rooms {
   display: grid;
@@ -120,17 +188,18 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
 .room .room-head { font-weight: 600; margin-bottom: 0.4rem; }
 .room .room-meta { color: var(--muted); font-size: 0.78rem; }
 .room.occupied { border-color: var(--asleep); }
+.room .sprite { margin: 0.2rem auto; }
 
 /* --- patients --- */
 .patients {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 0.8rem;
 }
 
 .patient {
   display: grid;
-  grid-template-columns: 56px 1fr;
+  grid-template-columns: auto 1fr;
   gap: 0.7rem;
   align-items: center;
   background: #12152e;
@@ -156,49 +225,26 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
 
 .patient .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.45rem; }
 
-/* --- sprite: 14x14 frames in a 62x28 sheet, drawn at 4x --- */
-.sprite {
-  width: 56px;
-  height: 56px;
-  background-image: url("/assets/Coste.png");
-  background-repeat: no-repeat;
-  background-size: 248px 112px;
-  image-rendering: pixelated;
-  transform-origin: bottom center;
+/* --- staff --- */
+.staff {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.8rem;
 }
 
-/* Idle = sheet row 1 (y = -56), frames in columns 0..2 */
-.sprite.idle { animation: idle 0.8s steps(3) infinite; }
-@keyframes idle {
-  from { background-position: 0 -56px; }
-  to { background-position: -168px -56px; }
+.staff .member {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+  align-items: center;
+  background: #12152e;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
 }
 
-/* Walk = sheet row 0 (y = 0), frames in columns 0..2 */
-.sprite.walk { animation: walk 0.45s steps(3) infinite; }
-@keyframes walk {
-  from { background-position: 0 0; }
-  to { background-position: -168px 0; }
-}
-
-/* Sleep = single frame at row 1, column 3 */
-.sprite.sleep {
-  background-position: -168px -56px;
-  position: relative;
-}
-.sprite.sleep::after {
-  content: "z";
-  position: absolute;
-  top: -6px;
-  right: -2px;
-  color: var(--asleep);
-  font-weight: 700;
-  animation: floatz 1.6s ease-in-out infinite;
-}
-@keyframes floatz {
-  0%, 100% { opacity: 0.2; transform: translateY(0) scale(0.9); }
-  50% { opacity: 1; transform: translateY(-6px) scale(1.15); }
-}
+.staff .member .name { font-weight: 600; }
+.staff .member .meta { color: var(--muted); font-size: 0.78rem; }
 
 /* --- queries --- */
 .queries {
