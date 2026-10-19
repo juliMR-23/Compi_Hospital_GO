@@ -5,6 +5,37 @@ Hospital management system for the *Hospital*, written in Go. It showcases idiom
 > [!NOTE]
 > Project developed by Julián Marín Ramírez for the **Lenguajes y Compiladores** course
 
+## Project structure
+
+```
+CompiHospitalGO/
+├── main.go              demo scenario and all printing
+└── hospital/
+    ├── hospital.go      Hospital: admit/hire, dispatch, AssignRoom, queries
+    ├── attender.go      Attender interface (implemented by Doctor and Orderly)
+    ├── person.go        embedded identity base (id, name, age)
+    ├── patient.go       states, sleep attack, room back-reference
+    ├── doctor.go        maxPatients, DiagnosePatient, Attend
+    ├── orderly.go       transfer attender
+    ├── room.go          capacity, Occupy/Release, derived state
+    ├── episodeRecord.go immutable episode snapshot
+    ├── errors.go        sentinel errors
+    └── automaticID.go   atomic id counters
+```
+
+## Domain model
+
+| Type | Responsibility |
+|------|----------------|
+| `Person` | Embedded base: `id`, `name`, `age`, shared by staff and patients. |
+| `Attender` | Interface (`ID`, `Name`, `Attend`) implemented by `Doctor` and `Orderly`. |
+| `Patient` | State (`Awake`/`AsleepInHallway`/`AsleepInBed`), narcolepsy level, assigned doctor and room. |
+| `Doctor` | An `Attender`; takes up to `maxPatients` under care via `DiagnosePatient`. |
+| `Orderly` | An `Attender` that transfers patients to rooms. |
+| `Room` | Capacity, occupant list and the derived `Available`/`Occupied` state. |
+| `EpisodeRecord` | Immutable snapshot of one attended episode. |
+| `Hospital` | Owns the patients, staff, rooms and history; coordinates every operation. |
+
 ## Requirements
 
 - Go 1.21 or later.
@@ -62,12 +93,12 @@ go test -v -run TestAssignRoomNoFreeRoom ./hospital/
 go test -race ./...
 ```
 
-Expected summary:
+> [!TIP]
+> You should see this summary at the end:
+> ```text
+> ?    CompiHospitalGO           [no test files]
+> ok   CompiHospitalGO/hospital
 
-```text
-?    CompiHospitalGO           [no test files]
-ok   CompiHospitalGO/hospital
-```
 
 ## Tests
 
@@ -89,18 +120,61 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 
 ## Design decisions
 
-- **Composition over inheritance.** Identity data (`id`, `name`, `age`) lives in `Person`, which is embedded in `Patient` and `Doctor`, so no fields are duplicated. The embedded methods are promoted automatically.
-- **Encapsulation through packages.** Every struct keeps its fields unexported and exposes them through methods; the domain rules cannot be bypassed from outside the `hospital` package.
-- **Polymorphism with a real interface.** `Attender` is implemented by `Doctor` and `Orderly`, and the hospital stores its staff in a `[]Attender`. `Dispatch` calls `Attend` without any type assertion, so the concrete type is decided at runtime.
-- **Room state derived from capacity.** A room is `Available` as long as it has **at least one free slot**, and it is marked `Occupied` **only when it reaches full capacity**. `Occupy` refuses to overflow capacity and refuses the same patient twice; `Release` frees a slot and refreshes the state, so a room does not need to be completely empty to accept a new patient again. `Occupy` and `Release` also own the patient's back-reference to the room, so the room and the patient can never disagree about where the patient sleeps.
-- **A bed only for a sleeping patient.** `AssignRoom` refuses an awake patient with `ErrIsAwake` and a patient who already has a room with `ErrHasRoom`, so a bed can only be given to someone asleep in the hallway.
-- **Validated construction.** Every constructor returns `(value, error)` and checks its own required fields before building the object: `NewHospital`, `NewPatient`, `NewDoctor` and `NewOrderly` reject a blank name (and blank specialty), a non-positive age and an out-of-range narcolepsy level, while `NewRoom` rejects a negative number or a non-positive capacity. All of them wrap the shared `ErrInvalidInput` sentinel with the specific field that failed, so an invalid entity can never be built.
+| Decision | Lives in | Why it matters |
+|----------|----------|----------------|
+| Composition over inheritance | `person.go` | identity fields are shared, never duplicated |
+| Encapsulation | unexported fields | domain rules cannot be bypassed from outside |
+| Polymorphism | `attender.go` + `[]Attender` | the concrete attender is chosen at runtime |
+| Typed state constants | `patient.go`, `room.go` | no loose strings, readable output |
+| Automatic identifiers | `automaticID.go` | unique ids, safe under concurrency |
+| Room state derived from capacity | `room.go` | one source of truth for available/occupied |
+| A bed only for a sleeping patient | `hospital.go` `AssignRoom` | the state is a precondition, not a guess |
+| Room owns the patient↔room link | `room.go` | the two sides cannot disagree |
+| Validated construction | every constructor | an invalid entity can never exist |
+| Errors as values | `errors.go` | callers use `errors.Is`, never `panic` |
+| Round-robin dispatch | `hospital.go` `NextAttender` | fair rotation, no starvation |
+| Availability is diagnose-only | `doctor.go` | emergencies are always attended |
+| State-driven auto-dispatch | `hospital.go` | the hospital reacts to the patient's state |
+| History as value snapshots | `episodeRecord.go` | records stay immutable |
+| Data, not printing, in the model | the four queries | the model stays UI-agnostic |
+
+### Object-oriented foundations
+
+- **Composition over inheritance.** Identity data (`id`, `name`, `age`) lives in `Person`, embedded in `Patient` and `Doctor`, so no fields are duplicated and the methods are promoted automatically.
+- **Encapsulation through packages.** Every struct keeps its fields unexported and exposes them only through methods; the domain rules cannot be bypassed from outside the `hospital` package.
+- **Polymorphism with a real interface.** `Attender` is implemented by `Doctor` and `Orderly`, and the hospital stores its staff as `[]Attender`. `Dispatch` calls `Attend` with no type assertion, so the concrete type is resolved at runtime.
 - **Typed state constants.** `PatientState`, `NarcolepsyLevel` and `RoomState` are named types with `iota` constants and a `String()` method, avoiding loose strings and giving readable output.
-- **Errors as values, never `panic`.** Every foreseeable failure returns a wrapped error using `fmt.Errorf("...: %w", ...)` and a sentinel error (e.g. `ErrNoFreeRoom`, `ErrRoomOccupied`), so callers can inspect them with `errors.Is`.
-- **Round-robin dispatch.** A cursor (`nextAttender`) walks the `staff []Attender`, so emergencies rotate fairly across everyone hired; over several dispatches both concrete types are actually used.
-- **Availability is a Doctor-only, under-care concern.** `IsAvailable` is **not** part of the `Attender` interface: it reports whether a doctor can take on another patient under care, and only `DiagnosePatient` consults it (rejecting once `maxPatients` is reached with `ErrDocUnavailable`). Dispatch never looks at it, so an emergency is always attended — `Dispatch`/`AttendHallwayPatients` rotate the next attender and `AttendSleepEmergency`/`Attend` always run, even for a doctor at capacity.
-- **State-driven auto-dispatch.** `AttendHallwayPatients` scans the `AsleepInHallway` patients and dispatches an attender to each, so the hospital decides when to act based on the patient's state.
-- **Queries on the final state.** The demo answers Query 5.3 in the middle of the scenario, while the fourth patient is still asleep in the hallway, so the "no free room" path runs on a genuinely sleeping patient. The remaining queries print only after the scenario ends, so Query 5.1 shows the hallway emptied once the woken patient freed a bed and the hallway patient moved in.
-- **The hospital owns its history.** `Dispatch` records the episode in the hospital history itself (the attender keeps its own copy), and `RegisterEpisode` de-duplicates by episode id. An `EpisodeRecord` is a **value**, not a pointer, so each stored record is an immutable snapshot of what happened at that instant (id, time, location and room captured when it was created) instead of a handle to a shared, still-mutable object.
-- **Data, not printing, in the model.** The four queries return values (`[]*Patient`, `[]EpisodeRecord`, `*Room`, `map[*Patient]int`); all printing happens in `main`.
 - **Automatic identifiers.** `automaticID.go` generates unique ids per entity type with atomic counters, safe for concurrent use.
+
+### State and invariants
+
+- **A bed only for a sleeping patient.** `AssignRoom` refuses an awake patient (`ErrIsAwake`) and a patient who already has a room (`ErrHasRoom`), so a bed is only ever given to someone asleep in the hallway.
+- **Room owns the patient↔room link.** `Room.Occupy`/`Release` update the patient's back-reference, so the room and the patient can never disagree about where the patient sleeps.
+- **Validated construction.** Every constructor returns `(value, error)` and checks its own required fields (`NewRoom` rejects a negative number or a non-positive capacity; the others reject a blank name, a blank specialty, a non-positive age or an out-of-range level), all wrapping the shared `ErrInvalidInput` — so an invalid entity can never be built.
+
+<details>
+<summary><b>Room state derived from capacity</b></summary>
+
+A room is `Available` as long as it has **at least one free slot**, and it is marked `Occupied` **only when it reaches full capacity**. `Occupy` refuses to overflow capacity and refuses the same patient twice; `Release` frees a slot and refreshes the state, so a room does not need to be completely empty to accept a new patient again.
+</details>
+
+### Error handling
+
+- **Errors as values, never `panic`.** Every foreseeable failure returns a wrapped error using `fmt.Errorf("...: %w", ...)` and a sentinel error (e.g. `ErrNoFreeRoom`, `ErrRoomOccupied`), so callers can inspect them with `errors.Is`.
+
+### Dispatch and availability
+
+- **Round-robin dispatch.** A cursor (`nextAttender`) walks the `staff []Attender`, so emergencies rotate fairly across everyone hired and, over several dispatches, both concrete types are actually used.
+- **State-driven auto-dispatch.** `AttendHallwayPatients` scans the `AsleepInHallway` patients and dispatches an attender to each, so the hospital decides when to act based on the patient's state.
+
+<details>
+<summary><b>Availability is a Doctor-only, under-care concern</b></summary>
+
+`IsAvailable` is **not** part of the `Attender` interface: it reports whether a doctor can take on another patient under care, and only `DiagnosePatient` consults it (rejecting once `maxPatients` is reached with `ErrDocUnavailable`). Dispatch never looks at it, so an emergency is always attended — `Dispatch`/`AttendHallwayPatients` rotate the next attender and `AttendSleepEmergency`/`Attend` always run, even for a doctor at capacity.
+</details>
+
+### History and queries
+
+- **The hospital owns its history.** `Dispatch` records the episode and `RegisterEpisode` de-duplicates by episode id; an `EpisodeRecord` is a **value**, so each stored record is an immutable snapshot (id, time, location and room captured when it was created) instead of a handle to a shared, still-mutable object.
+- **Queries on the final state.** Query 5.3 is answered in the middle of the scenario on a genuinely sleeping patient, and the remaining queries print once it has finished.
+- **Data, not printing, in the model.** The four queries return values (`[]*Patient`, `[]EpisodeRecord`, `*Room`, `map[*Patient]int`); all printing happens in `main`.
