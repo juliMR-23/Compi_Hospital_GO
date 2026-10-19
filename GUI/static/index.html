@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coste on the ward</title>
+  <link rel="stylesheet" href="game.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Coste on the ward</h1>
+      <div class="hud">
+        <span>Awake <b id="hud-awake">0</b>/<b id="hud-total">0</b></span>
+        <span>Score <b id="hud-score">0</b></span>
+        <span class="power">Vallenato
+          <span id="hud-power" class="bar"><i></i></span>
+        </span>
+      </div>
+    </header>
+
+    <canvas id="game" width="960" height="600"></canvas>
+
+    <p class="help">
+      Move with <b>WASD</b> or the <b>arrows</b>. Walk into a sleeping patient to wake them.
+      Press <b>SPACE</b> to play the vallenato accordion and rouse everyone nearby.
+      Narcolepsy strikes again every few seconds, so keep moving.
+    </p>
+  </div>
+
+  <div id="overlay" class="overlay">
+    <div class="card">
+      <h2>Coste on the ward</h2>
+      <p>Wake every patient before the narcolepsy makes them doze off again.</p>
+      <button id="start">Start</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
