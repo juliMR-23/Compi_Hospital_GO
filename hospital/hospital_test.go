@@ -2,6 +2,8 @@ package hospital
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -411,5 +413,101 @@ func TestAttendHallwayPatients(t *testing.T) {
 	}
 	if stuck.State() != AsleepInHallway {
 		t.Fatalf("attending must not change the state, got %v", stuck.State())
+	}
+}
+
+// TestHospitalConcurrentAccess hammers the hospital from many goroutines at once:
+// writers admit + put patients to sleep + compete for rooms + dispatch, while
+// readers run the queries. Run it with `go test -race` to prove the mutex closes
+// the race; the assertions check the invariants that must hold for any interleaving.
+func TestHospitalConcurrentAccess(t *testing.T) {
+	h := mustHospital(t, "test hospital")
+	if err := h.HireDoctor(mustDoctor(t, "Karen", 41, "Neurología")); err != nil {
+		t.Fatalf("HireDoctor: %v", err)
+	}
+	if err := h.HireOrderly(mustOrderly(t, "Inés", 29)); err != nil {
+		t.Fatalf("HireOrderly: %v", err)
+	}
+	for _, number := range []int{101, 102, 103, 104, 105} {
+		room, err := NewRoom(number, 2)
+		if err != nil {
+			t.Fatalf("NewRoom(%d): %v", number, err)
+		}
+		if err := h.RegisterRoom(room); err != nil {
+			t.Fatalf("RegisterRoom(%d): %v", number, err)
+		}
+	}
+
+	const patients = 40
+	ps := make([]*Patient, patients)
+	for i := range ps {
+		ps[i] = mustPatient(t, fmt.Sprintf("Patient %d", i), 20, Mild)
+	}
+
+	var wg sync.WaitGroup
+	for i, p := range ps {
+		wg.Add(1)
+		go func(i int, p *Patient) {
+			defer wg.Done()
+			if err := h.AdmitPatient(p); err != nil {
+				t.Errorf("AdmitPatient(%d): %v", i, err)
+				return
+			}
+			if err := h.SleepAttack(p, "hallway"); err != nil {
+				t.Errorf("SleepAttack(%d): %v", i, err)
+				return
+			}
+			if _, err := h.AssignRoom(p); err != nil && !errors.Is(err, ErrNoFreeRoom) {
+				t.Errorf("AssignRoom(%d): %v", i, err)
+			}
+			if _, err := h.Dispatch(p, p.Location()); err != nil {
+				t.Errorf("Dispatch(%d): %v", i, err)
+			}
+		}(i, p)
+	}
+
+	// Reader goroutines run the queries concurrently with the writers.
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = h.PatientsInHallway()
+			_ = h.SevereReport()
+			_ = h.History()
+			_ = h.Staff()
+			_ = h.Patients()
+			_ = h.Rooms()
+		}()
+	}
+	wg.Wait()
+
+	if got := len(h.History()); got != patients {
+		t.Fatalf("history length = %d, want %d (every dispatch must be recorded exactly once)", got, patients)
+	}
+
+	seen := make(map[*Patient]int)
+	occupants := 0
+	for _, r := range h.Rooms() {
+		if len(r.Occupants()) > r.Capacity() {
+			t.Fatalf("room %d holds %d occupants, capacity %d", r.ID(), len(r.Occupants()), r.Capacity())
+		}
+		for _, p := range r.Occupants() {
+			seen[p]++
+			occupants++
+		}
+	}
+	for p, n := range seen {
+		if n != 1 {
+			t.Fatalf("patient %s appears in %d rooms, want exactly 1", p.ID(), n)
+		}
+	}
+	inRoom := 0
+	for _, p := range h.Patients() {
+		if p.Room() != nil {
+			inRoom++
+		}
+	}
+	if inRoom != occupants {
+		t.Fatalf("patients claiming a room = %d but rooms hold %d (back-references out of sync)", inRoom, occupants)
 	}
 }

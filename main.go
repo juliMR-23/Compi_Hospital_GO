@@ -41,22 +41,22 @@ func main() {
 
 	// 5. Four patients suffer a sleep attack in different locations.
 	// The first three get a room before the attender arrives, so the episode records the room.
-	sleepAttack(yeimy, "cafetería")
+	sleepAttack(h, yeimy, "cafetería")
 	assignRoom(h, yeimy)
 	dispatch(h, yeimy, "cafetería")
 
-	sleepAttack(elkin, "sala de espera")
+	sleepAttack(h, elkin, "sala de espera")
 	assignRoom(h, elkin)
 	dispatch(h, elkin, "sala de espera")
 
-	sleepAttack(luz, "fila de radiología")
+	sleepAttack(h, luz, "fila de radiología")
 	assignRoom(h, luz)
 	dispatch(h, luz, "fila de radiología")
 
 	// The fourth patient finds every bed taken. Query 5.3 (Assigning room) is
 	// answered right here, while he is still asleep in the hallway, so the
 	// "no room available" case is exercised on a genuinely sleeping patient.
-	sleepAttack(wilfrido, "pasillo 2, segundo piso")
+	sleepAttack(h, wilfrido, "pasillo 2, segundo piso")
 	fmt.Printf("\n== Assigning room to %s ==\n", wilfrido.ID())
 	if room, err := h.AssignRoom(wilfrido); err != nil {
 		fmt.Printf("  no room available: patient stays in the hallway (%v)\n", err)
@@ -71,7 +71,7 @@ func main() {
 
 	// One patient wakes up, releases the room, and the hallway patient moves in.
 	fmt.Println("\n== Room release and reassignment ==")
-	check(yeimy.WakeUp())
+	check(h.WakeUp(yeimy))
 	fmt.Printf("  %s woke up and released room 101\n", yeimy.ID())
 	if room, err := h.AssignRoom(wilfrido); err != nil {
 		check(err)
@@ -104,6 +104,10 @@ func main() {
 	for p, count := range h.SevereReport() {
 		fmt.Printf("  %s %s: %d episode(s) today\n", p.ID(), p.Name(), count)
 	}
+
+	// Bonus (Section 7): run the same logic as a concurrent simulation. Launch it
+	// with `go run -race .` to prove the shared state is protected by the mutex.
+	runConcurrentSimulation()
 }
 
 // must unwraps a (value, error) pair from a validated constructor. The demo uses
@@ -122,8 +126,8 @@ func check(err error) {
 	}
 }
 
-func sleepAttack(p *hospital.Patient, location string) {
-	if err := p.SufferSleepAttack(location); err != nil {
+func sleepAttack(h *hospital.Hospital, p *hospital.Patient, location string) {
+	if err := h.SleepAttack(p, location); err != nil {
 		check(err)
 		return
 	}
