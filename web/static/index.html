@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hospital de los Costeños con Narcolepsia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1 id="hospital-name">Hospital de los Costeños con Narcolepsia</h1>
+    <p class="tagline">Narcolepsy ward viewer — REST API + HTML/JS bonus</p>
+  </header>
+
+  <main>
+    <section class="panel controls">
+      <h2>Actions</h2>
+      <form id="admit-form">
+        <input name="name" placeholder="Patient name" autocomplete="off" required>
+        <input name="age" type="number" min="1" max="120" value="30" required>
+        <select name="level">
+          <option value="Mild">Mild</option>
+          <option value="Moderate" selected>Moderate</option>
+          <option value="Severe">Severe</option>
+        </select>
+        <button type="submit">Admit patient</button>
+      </form>
+      <div class="row">
+        <button id="attend-hallway" class="ghost">Send orderlies to the hallway</button>
+        <button id="reset" class="ghost">Reset scenario</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Rooms</h2>
+      <div id="rooms" class="rooms"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Patients</h2>
+      <div id="patients" class="patients"></div>
+    </section>
+
+    <section class="panel queries">
+      <div>
+        <h3>Patients asleep in a hallway</h3>
+        <ul id="q-hallway"></ul>
+      </div>
+      <div>
+        <h3>History per doctor</h3>
+        <div id="q-history"></div>
+      </div>
+      <div>
+        <h3>Severity report</h3>
+        <ul id="q-severe"></ul>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
