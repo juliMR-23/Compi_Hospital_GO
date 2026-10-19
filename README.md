@@ -10,6 +10,7 @@ Hospital management system for the *Hospital*, written in Go. It showcases idiom
 ```
 CompiHospitalGO/
 ├── main.go              demo scenario and all printing
+├── simulation.go        optional concurrent simulation (bonus)
 └── hospital/
     ├── hospital.go      Hospital: admit/hire, dispatch, AssignRoom, queries
     ├── attender.go      Attender interface (implemented by Doctor and Orderly)
@@ -40,6 +41,7 @@ CompiHospitalGO/
 
 - Go 1.21 or later.
 - Standard library only (no third-party modules).
+- Optional: a C toolchain (e.g. MinGW-w64/TDM-GCC) with `CGO_ENABLED=1` to run the `-race` checks of the concurrent simulation.
 
 ## How to run
 
@@ -49,7 +51,7 @@ From the repository root:
 go run .
 ```
 
-This runs the mandatory demonstration scenario (Section 6) and prints the result of the four required queries.
+This runs the mandatory demonstration scenario (Section 6) and prints the result of the four required queries, then — as an optional bonus — a concurrent simulation (see [Bonus: concurrent simulation](#bonus-concurrent-simulation)).
 
 Expected output (excerpt):
 
@@ -93,12 +95,24 @@ go test -v -run TestAssignRoomNoFreeRoom ./hospital/
 go test -race ./...
 ```
 
-> [!TIP]
-> You should see this summary at the end:
 > ```text
 > ?    CompiHospitalGO           [no test files]
 > ok   CompiHospitalGO/hospital
+> ```
 
+## Bonus: concurrent simulation
+
+`main` ends by running an optional concurrent simulation (`simulation.go`). Each patient is a goroutine that falls asleep at a random interval and then competes for a bed, while the `Hospital` serialises every access to its shared state with a `sync.Mutex`. It uses a separate hospital, so the graded demonstration above keeps its deterministic output and its own history untouched.
+
+Data-race detection needs cgo and a C toolchain:
+
+```bash
+# with a C compiler (MinGW-w64 / TDM-GCC) on the PATH
+go run -race .          # PowerShell: set $env:CGO_ENABLED=1 first
+go test -race ./...
+```
+
+With `CGO_ENABLED=0` (the default on Windows) the `-race` build is unavailable; the program still runs and the mutex still guards the state. `TestHospitalConcurrentAccess` runs the writers and the query readers from many goroutines at once and asserts the invariants that must hold for any interleaving, so it is the deterministic companion to the simulation (best run under `-race`).
 
 ## Tests
 
@@ -117,6 +131,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestDispatchRotatesThroughStaff` | Round-robin rotates the `[]Attender` (doctor, then orderly) and records each episode on the attender and in the history. |
 | `TestDispatchAttendsWithDoctorAtCapacity` | A doctor at `maxPatients` is still dispatched to an emergency. |
 | `TestAttendHallwayPatients` | Dispatches an attender to every patient in a hallway. |
+| `TestHospitalConcurrentAccess` | Many goroutines admit, put to sleep, assign rooms and dispatch while readers run the queries; asserts the invariants (meant for `-race`). |
 
 ## Design decisions
 
@@ -137,6 +152,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | State-driven auto-dispatch | `hospital.go` | the hospital reacts to the patient's state |
 | History as value snapshots | `episodeRecord.go` | records stay immutable |
 | Data, not printing, in the model | the four queries | the model stays UI-agnostic |
+| One mutex per hospital | `hospital.go` | every exported method locks; `...Locked` cores never re-lock |
 
 ### Object-oriented foundations
 
@@ -172,6 +188,11 @@ A room is `Available` as long as it has **at least one free slot**, and it is ma
 
 `IsAvailable` is **not** part of the `Attender` interface: it reports whether a doctor can take on another patient under care, and only `DiagnosePatient` consults it (rejecting once `maxPatients` is reached with `ErrDocUnavailable`). Dispatch never looks at it, so an emergency is always attended — `Dispatch`/`AttendHallwayPatients` rotate the next attender and `AttendSleepEmergency`/`Attend` always run, even for a doctor at capacity.
 </details>
+
+### Concurrency
+
+- **One mutex, no reentrancy.** `Hospital` holds a `sync.Mutex` and every exported method takes it before touching shared state. Internal helpers suffixed `Locked` assume the lock is already held and never lock again, so the nested calls (`AttendHallwayPatients → Dispatch → RegisterEpisode`) cannot self-deadlock on a non-reentrant mutex.
+- **Mutations go through the hospital.** The simulation and the test change patient state via `Hospital.SleepAttack`/`WakeUp` rather than the entity methods directly, so a single lock covers patients, rooms, staff and history alike. Identifier generation is already lock-free (`atomic`).
 
 ### History and queries
 

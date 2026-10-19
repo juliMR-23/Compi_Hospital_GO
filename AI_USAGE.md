@@ -16,6 +16,7 @@
 - **Room identity by pointer instead of number.** `RegisterRoom` deduplicated with `slices.Contains` (pointer identity), so two `Room` objects with the same number both registered. I switched to the room number (`slices.ContainsFunc` on `ID()`) and return `ErrRoomAlreadyRegistered`.
 - **Invalid entities could be built.** Constructors trusted their inputs and `NewRoom` had a bespoke `ErrInvalidRoomCapacity`. I made every constructor return `(value, error)`, validate its fields, and wrap one shared `ErrInvalidInput`.
 - **Episode history kept as a shared pointer.** `NewEpisode` returned a `*EpisodeRecord` stored in several places, so a record was a live handle to a mutable object. I made it a value (`NewEpisode` returns `EpisodeRecord`, stored as `[]EpisodeRecord`), so each record is a snapshot.
+- **Non-reentrant mutex deadlock.** The first concurrency pass locked at the top of every exported `Hospital` method, but `AttendHallwayPatients` calls `PatientsInHallway` and `Dispatch`, which call `NextAttender` and `RegisterEpisode` — the same goroutine re-locked and the program deadlocked. I split each exported method into a thin locking wrapper plus an unexported `...Locked` core that assumes the lock is held, and routed the simulation's state changes through new `Hospital.SleepAttack`/`WakeUp` wrappers so one lock covers every mutation.
 
 ## Learning Summary
 - Embedding `Person` in structs requires careful method receiver selection (pointer vs value)
@@ -23,4 +24,5 @@
 - A bidirectional association must be owned by one side (`Room.Occupy`/`Release` maintain the patient's back-reference) so the two objects cannot disagree.
 - Validate in the constructor and return an error, so an invalid object can never exist; one shared sentinel with wrapped context beats a sentinel per field.
 - Store a record of what happened by value (a snapshot), not by pointer to a still-mutable object.
+- `sync.Mutex` is not reentrant: give each public method a locking wrapper over a lock-held helper, instead of locking inside methods that may call one another.
 - `atomic.AddInt64(&seq, 1)` is the idiomatic Go way for thread-safe counters
