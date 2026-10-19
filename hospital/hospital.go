@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 )
 
+// Hospital owns every piece of shared mutable state in the model (staff, patients,
+// rooms and the episode history). Because the optional concurrent simulation runs
+// one goroutine per patient, every exported method takes mu before touching that
+// state. Helpers whose name ends in "Locked" assume the lock is already held and
+// never lock again, because sync.Mutex is not reentrant.
 type Hospital struct {
+	mu           sync.Mutex
 	name         string
 	doctors      []*Doctor
 	patients     []*Patient
@@ -25,14 +32,42 @@ func NewHospital(name string) (*Hospital, error) {
 	}, nil
 }
 
-func (h *Hospital) Name() string             { return h.name }
-func (h *Hospital) Doctors() []*Doctor       { return slices.Clone(h.doctors) }
-func (h *Hospital) Staff() []Attender        { return slices.Clone(h.staff) }
-func (h *Hospital) Patients() []*Patient     { return slices.Clone(h.patients) }
-func (h *Hospital) Rooms() []*Room           { return slices.Clone(h.rooms) }
-func (h *Hospital) History() []EpisodeRecord { return slices.Clone(h.history) }
+// Name reads a field that NewHospital sets once and never mutates, so it needs no lock.
+func (h *Hospital) Name() string { return h.name }
+
+func (h *Hospital) Doctors() []*Doctor {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.doctors)
+}
+
+func (h *Hospital) Staff() []Attender {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.staff)
+}
+
+func (h *Hospital) Patients() []*Patient {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.patients)
+}
+
+func (h *Hospital) Rooms() []*Room {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.rooms)
+}
+
+func (h *Hospital) History() []EpisodeRecord {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.history)
+}
 
 func (h *Hospital) AdmitPatient(p *Patient) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if p == nil {
 		return fmt.Errorf("admit patient: %w", ErrPatientNil)
 	}
@@ -44,6 +79,8 @@ func (h *Hospital) AdmitPatient(p *Patient) error {
 }
 
 func (h *Hospital) HireDoctor(d *Doctor) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if d == nil {
 		return fmt.Errorf("hire doctor: %w", ErrDoctorNil)
 	}
@@ -56,6 +93,8 @@ func (h *Hospital) HireDoctor(d *Doctor) error {
 }
 
 func (h *Hospital) HireOrderly(o *Orderly) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if o == nil {
 		return fmt.Errorf("hire orderly: %w", ErrOrderlyNil)
 	}
@@ -67,6 +106,8 @@ func (h *Hospital) HireOrderly(o *Orderly) error {
 }
 
 func (h *Hospital) RegisterRoom(r *Room) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if r == nil {
 		return fmt.Errorf("register room: %w", ErrRoomNil)
 	}
@@ -82,6 +123,13 @@ func (h *Hospital) RegisterRoom(r *Room) error {
 // is eligible, and the cursor keeps the rotation fair. It returns nil only when
 // the hospital has hired nobody.
 func (h *Hospital) NextAttender() Attender {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.nextAttenderLocked()
+}
+
+// nextAttenderLocked is the lock-held core of NextAttender; it also advances the cursor.
+func (h *Hospital) nextAttenderLocked() Attender {
 	n := len(h.staff)
 	if n == 0 {
 		return nil
@@ -92,10 +140,17 @@ func (h *Hospital) NextAttender() Attender {
 }
 
 func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.dispatchLocked(p, location)
+}
+
+// dispatchLocked is the lock-held core of Dispatch, reused by AttendHallwayPatients.
+func (h *Hospital) dispatchLocked(p *Patient, location string) (EpisodeRecord, error) {
 	if p == nil {
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient: %w", ErrPatientNil)
 	}
-	attender := h.NextAttender()
+	attender := h.nextAttenderLocked()
 	if attender == nil {
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), ErrNoAttenderAvailable) //nobody hired -> no invented attender
 	}
@@ -103,7 +158,7 @@ func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) 
 	if err != nil {
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
-	if err := h.RegisterEpisode(episode); err != nil { //the hospital keeps the history it coordinated, not the caller
+	if err := h.registerEpisodeLocked(episode); err != nil { //the hospital keeps the history it coordinated, not the caller
 		return EpisodeRecord{}, fmt.Errorf("dispatch patient %s: %w", p.ID(), err)
 	}
 	return episode, nil
@@ -113,11 +168,15 @@ func (h *Hospital) Dispatch(p *Patient, location string) (EpisodeRecord, error) 
 // in a hallway. The hospital decides WHEN to act (the state AsleepInHallway) and
 // WHO goes (the round-robin cursor over []Attender, which keeps alternating
 // between doctors and orderlies). It never panics: failures are returned so the
-// caller can report them.
+// caller can report them. The whole pass runs under a single lock, so the
+// hallway snapshot and the dispatches it triggers cannot interleave with another
+// goroutine.
 func (h *Hospital) AttendHallwayPatients() []error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	var errs []error
-	for _, p := range h.PatientsInHallway() {
-		if _, err := h.Dispatch(p, p.Location()); err != nil {
+	for _, p := range h.patientsInHallwayLocked() {
+		if _, err := h.dispatchLocked(p, p.Location()); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -125,6 +184,8 @@ func (h *Hospital) AttendHallwayPatients() []error {
 }
 
 func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if p == nil {
 		return nil, fmt.Errorf("assign room: %w", ErrPatientNil)
 	}
@@ -135,25 +196,30 @@ func (h *Hospital) AssignRoom(p *Patient) (*Room, error) {
 		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrHasRoom)
 	}
 	if p.State() == Awake {
-		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrIsAwake) //only a sleeping patient needs a bed
+		return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrIsAwake) //only a sleeping patient gets a room
 	}
 	for _, r := range h.rooms {
 		if r.IsAvailable() {
 			if err := r.Occupy(p); err != nil {
 				return nil, fmt.Errorf("assign room %s: %w", p.ID(), err)
 			}
-			p.state = AsleepInBed //the room already set the back-reference on Occupy
+			p.state = AsleepInBed //the room already set the patient's back-reference
 			return r, nil
 		}
 	}
 	return nil, fmt.Errorf("assign room %s: %w", p.ID(), ErrNoFreeRoom)
 }
 
-// RegisterEpisode stores a copy of the episode (an EpisodeRecord is a value, a
-// snapshot of what happened) and de-duplicates by episode id.
 func (h *Hospital) RegisterEpisode(e EpisodeRecord) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.registerEpisodeLocked(e)
+}
+
+// registerEpisodeLocked is the lock-held core of RegisterEpisode, reused by Dispatch.
+func (h *Hospital) registerEpisodeLocked(e EpisodeRecord) error {
 	if e.ID() == "" {
-		return fmt.Errorf("register episode: missing id: %w", ErrInvalidInput) //a value cannot be nil; an empty id means an unbuilt record
+		return fmt.Errorf("register episode: %w", ErrInvalidInput) //a zero-value record has no id
 	}
 	if slices.ContainsFunc(h.history, func(existing EpisodeRecord) bool { return existing.ID() == e.ID() }) {
 		return fmt.Errorf("register episode %s: %w", e.ID(), ErrEpisodeAlreadyRegistered) //avoid duplicating the episode in the history
@@ -162,7 +228,35 @@ func (h *Hospital) RegisterEpisode(e EpisodeRecord) error {
 	return nil
 }
 
+// SleepAttack makes a patient fall asleep through the hospital, so the mutation of
+// the patient's state happens under the same lock as every other state change.
+func (h *Hospital) SleepAttack(p *Patient, location string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if p == nil {
+		return fmt.Errorf("sleep attack: %w", ErrPatientNil)
+	}
+	return p.SufferSleepAttack(location)
+}
+
+// WakeUp wakes a patient through the hospital, releasing their room under the lock.
+func (h *Hospital) WakeUp(p *Patient) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if p == nil {
+		return fmt.Errorf("wake up: %w", ErrPatientNil)
+	}
+	return p.WakeUp()
+}
+
 func (h *Hospital) PatientsInHallway() []*Patient {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.patientsInHallwayLocked()
+}
+
+// patientsInHallwayLocked is the lock-held core of PatientsInHallway.
+func (h *Hospital) patientsInHallwayLocked() []*Patient {
 	var hallway []*Patient
 	for _, p := range h.patients {
 		if p.state == AsleepInHallway {
@@ -173,6 +267,8 @@ func (h *Hospital) PatientsInHallway() []*Patient {
 }
 
 func (h *Hospital) SevereReport() map[*Patient]int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	report := make(map[*Patient]int)
 	for _, p := range h.patients {
 		if p.Level() == Severe {
