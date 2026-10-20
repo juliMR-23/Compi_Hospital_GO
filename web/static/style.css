@@ -271,7 +271,7 @@ button.danger { background: transparent; color: #ffd9e2; border: 1px solid var(-
 .room .room-head { font-weight: 600; margin-bottom: 0.3rem; }
 .room .room-meta { color: var(--muted); font-size: 0.78rem; }
 .room.occupied { border-color: var(--asleep); }
-.room .occupant { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.4rem; }
+.room .occupant { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
 .room .occupant .sprite { --scale: 3; }
 
 /* --- patients --- */

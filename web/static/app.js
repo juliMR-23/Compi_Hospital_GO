@@ -309,20 +309,14 @@ function updateStaffCard(card, s, data) {
   }
 }
 
-// The attender is an actor: a doctor can take a patient under care (diagnose) or
-// answer a sleep emergency; everyone can be sent to a patient. The buttons reuse
-// the same /api/action endpoints, passing this staff id so the chosen doctor is
-// the one who acts.
+// The attender is an actor: the panel picks a patient and makes this specific
+// staff member act. "Attend patient" goes through Attender.Attend (doctor and
+// orderly keep their own rule: only a sleeping patient is an emergency), while
+// the doctor-only buttons expose DiagnosePatient and AttendSleepEmergency. All of
+// them return the model's verdict unchanged; the panel only renders it.
 function renderStaffActions(card, s, data) {
   const actions = card.actions;
   actions.textContent = "";
-
-  if (s.role !== "Doctor") {
-    actions.append(
-      button("Dispatch to hallway", () => run({ type: "attend-hallway" })),
-    );
-    return;
-  }
 
   const picker = el("select", "patient-picker");
   const previous = card.picker ? card.picker.value : "";
@@ -335,12 +329,24 @@ function renderStaffActions(card, s, data) {
   card.picker = picker;
 
   const selected = () => picker.value;
-  actions.append(
-    picker,
-    button("Diagnose", () => run({ type: "diagnose", patient: selected(), doctor: s.id })),
-    button("Attend sleep", () => run({ type: "attend-sleep", patient: selected(), doctor: s.id })),
-    button("Dispatch", () => run({ type: "dispatch", patient: selected() })),
-  );
+  const location = () => {
+    const current = findPatient(selected());
+    return (current && current.location) || "hallway";
+  };
+
+  const buttons = [
+    button("Attend patient", () =>
+      run({ type: "attend", patient: selected(), staff: s.id, location: location() }),
+    ),
+  ];
+  if (s.role === "Doctor") {
+    buttons.push(
+      button("Diagnose", () => run({ type: "diagnose", patient: selected(), doctor: s.id })),
+      button("Sleep emergency", () => run({ type: "attend-sleep", patient: selected(), doctor: s.id })),
+    );
+  }
+
+  actions.append(picker, ...buttons);
 }
 
 // When a new episode appears, the attender that just responded walks to it.
@@ -377,7 +383,11 @@ function renderRooms(data) {
       const sprite = newSprite("sleep");
       setAnim(sprite, SPRITES.coste.asleep);
       const p = byId.get(id);
-      row.append(sprite, el("span", "room-meta", p ? p.name : id));
+      row.append(
+        sprite,
+        el("span", "room-meta", p ? p.name : id),
+        button("Wake", () => run({ type: "wake", patient: id })),
+      );
       room.appendChild(row);
     }
     wrap.appendChild(room);
