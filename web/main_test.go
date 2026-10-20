@@ -86,6 +86,15 @@ func TestStateEndpoint(t *testing.T) {
 			t.Errorf("staff %s has no age, want the embedded Person data", s.ID)
 		}
 	}
+	hasUnderCare := false
+	for _, s := range st.Staff {
+		if len(s.UnderCare) > 0 {
+			hasUnderCare = true
+		}
+	}
+	if !hasUnderCare {
+		t.Error("no doctor card exposes the patients under care")
+	}
 }
 
 func TestActionDiagnoseAssignsDoctor(t *testing.T) {
@@ -108,6 +117,90 @@ func TestActionDiagnoseAssignsDoctor(t *testing.T) {
 	}
 	if got := patientByID(st, target.ID); got.Doctor == nil {
 		t.Fatalf("after diagnose patient %s has no doctor", target.ID)
+	}
+}
+
+func TestActionAttendWithSpecificStaff(t *testing.T) {
+	s := newTestServer(t)
+	before := getState(t, s)
+
+	orderly := ""
+	for _, st := range before.Staff {
+		if st.Role == "Orderly" {
+			orderly = st.ID
+			break
+		}
+	}
+	if orderly == "" {
+		t.Fatal("scenario has no orderly to act with")
+	}
+
+	var target patientDTO
+	for _, p := range before.Patients {
+		if p.StateKey == "Awake" {
+			target = p
+			break
+		}
+	}
+	if target.ID == "" {
+		t.Fatal("scenario has no awake patient")
+	}
+	if code, _ := post(t, s, fmt.Sprintf(`{"type":"sleep","patient":%q,"location":"pasillo"}`, target.ID)); code != http.StatusOK {
+		t.Fatalf("sleep status = %d, want 200", code)
+	}
+
+	episodesBefore := 0
+	for _, st := range before.Staff {
+		if st.ID == orderly {
+			episodesBefore = len(st.Episodes)
+		}
+	}
+
+	code, st := post(t, s, fmt.Sprintf(`{"type":"attend","patient":%q,"staff":%q}`, target.ID, orderly))
+	if code != http.StatusOK {
+		t.Fatalf("attend status = %d, want 200", code)
+	}
+	if len(st.History) != len(before.History)+1 {
+		t.Errorf("history = %d, want %d", len(st.History), len(before.History)+1)
+	}
+	for _, staff := range st.Staff {
+		if staff.ID == orderly && len(staff.Episodes) != episodesBefore+1 {
+			t.Errorf("orderly episodes = %d, want %d", len(staff.Episodes), episodesBefore+1)
+		}
+	}
+}
+
+func TestActionAttendForwardsModelError(t *testing.T) {
+	s := newTestServer(t)
+	before := getState(t, s)
+
+	var awake patientDTO
+	for _, p := range before.Patients {
+		if p.StateKey == "Awake" {
+			awake = p
+			break
+		}
+	}
+	if awake.ID == "" {
+		t.Fatal("scenario has no awake patient")
+	}
+	orderly := ""
+	for _, st := range before.Staff {
+		if st.Role == "Orderly" {
+			orderly = st.ID
+			break
+		}
+	}
+	if orderly == "" {
+		t.Fatal("scenario has no orderly")
+	}
+
+	// The panel does not pre-check "the patient must be asleep"; the model does.
+	if code, _ := post(t, s, fmt.Sprintf(`{"type":"attend","patient":%q,"staff":%q}`, awake.ID, orderly)); code != http.StatusConflict {
+		t.Errorf("attend awake patient status = %d, want 409", code)
+	}
+	if code, _ := post(t, s, fmt.Sprintf(`{"type":"attend","patient":%q,"staff":"STF-999"}`, awake.ID)); code != http.StatusConflict {
+		t.Errorf("attend unknown staff status = %d, want 409", code)
 	}
 }
 

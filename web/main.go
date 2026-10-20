@@ -185,6 +185,7 @@ type actionRequest struct {
 	Number    int    `json:"number"`
 	Capacity  int    `json:"capacity"`
 	Doctor    string `json:"doctor"`
+	Staff     string `json:"staff"`
 }
 
 func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +200,7 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 	switch req.Type {
 	case "admit", "sleep", "wake", "assign-room", "dispatch", "attend-hallway",
-		"diagnose", "attend-sleep", "hire-doctor", "hire-orderly", "register-room", "reset":
+		"diagnose", "attend-sleep", "attend", "hire-doctor", "hire-orderly", "register-room", "reset":
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown action %q", req.Type))
 		return
@@ -262,6 +263,8 @@ func (s *server) apply(req actionRequest) error {
 		return s.diagnose(req)
 	case "attend-sleep":
 		return s.attendSleep(req)
+	case "attend":
+		return s.attend(req)
 	case "hire-doctor":
 		return s.hireDoctor(req)
 	case "hire-orderly":
@@ -307,6 +310,49 @@ func (s *server) attendSleep(req actionRequest) error {
 		return err
 	}
 	return doctor.AttendSleepEmergency(p)
+}
+
+// attend lets the panel point a specific attender at a patient, instead of the
+// round-robin cursor Dispatch uses. It calls the Attender interface method, so a
+// doctor and an orderly keep their own rules ("only a sleeping patient is an
+// emergency"), then asks the hospital to register the episode it just coordinated,
+// exactly as Dispatch does. No rule is re-implemented here.
+func (s *server) attend(req actionRequest) error {
+	p, err := s.patient(req.Patient)
+	if err != nil {
+		return err
+	}
+	attender, err := s.attender(req.Staff)
+	if err != nil {
+		return err
+	}
+	location := strings.TrimSpace(req.Location)
+	if location == "" {
+		location = p.Location()
+	}
+	episode, err := attender.Attend(p, location)
+	if err != nil {
+		return err
+	}
+	return s.h.RegisterEpisode(episode)
+}
+
+// attender finds the staff member the panel is acting with. An empty id means
+// "let the hospital choose", mirroring Dispatch.
+func (s *server) attender(id string) (hospital.Attender, error) {
+	if strings.TrimSpace(id) == "" {
+		attender := s.h.NextAttender()
+		if attender == nil {
+			return nil, fmt.Errorf("attend: %w", hospital.ErrNoAttenderAvailable)
+		}
+		return attender, nil
+	}
+	for _, a := range s.h.Staff() {
+		if a.ID() == id {
+			return a, nil
+		}
+	}
+	return nil, fmt.Errorf("attender %q not found", id)
 }
 
 func (s *server) hireDoctor(req actionRequest) error {
@@ -420,6 +466,7 @@ type staffDTO struct {
 	Role      string       `json:"role"`
 	Age       int          `json:"age"`
 	Specialty string       `json:"specialty,omitempty"`
+	UnderCare []string     `json:"underCare,omitempty"`
 	Episodes  []episodeDTO `json:"episodes"`
 }
 
@@ -488,6 +535,9 @@ func (s *server) snapshot() stateDTO {
 			dto.Role = "Doctor"
 			dto.Age = v.Age()
 			dto.Specialty = v.Specialty()
+			for _, p := range v.PatientsUnderCare() {
+				dto.UnderCare = append(dto.UnderCare, p.ID())
+			}
 			for _, e := range v.MyEpisodes() {
 				dto.Episodes = append(dto.Episodes, episodeToDTO(e))
 			}
