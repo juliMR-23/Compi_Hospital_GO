@@ -40,6 +40,7 @@ for (let c = 0; c < 6; c++) {
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const overlay = document.getElementById("overlay");
+const stage = document.querySelector(".stage");
 const hudAwake = document.getElementById("hud-awake");
 const hudTotal = document.getElementById("hud-total");
 const hudScore = document.getElementById("hud-score");
@@ -64,6 +65,8 @@ let patients = [];
 let staff = [];
 let cat = null;
 let effects = [];
+let lastWard = null;
+let evidenceHidden = false;
 
 // --- sprites -----------------------------------------------------------------
 
@@ -211,10 +214,97 @@ function buildActors(ward) {
 
 function applyWard(ward) {
   if (!ward) return;
+  lastWard = ward;
   for (const dto of ward.patients) {
     const p = patients.find((x) => x.id === dto.id);
     if (p) p.stateKey = dto.stateKey;
   }
+  renderEvidence(ward);
+}
+
+// --- evidence panel ----------------------------------------------------------
+
+// The side panel shows the four queries of the statement, read straight from the
+// ward snapshot the Go server computes with the hospital methods.
+function renderEvidence(ward) {
+  const byId = new Map(ward.patients.map((p) => [p.id, p]));
+
+  fillList(
+    "q-hallway",
+    ward.hallway.map((id) => {
+      const p = byId.get(id);
+      return p ? `${p.name} (${id})` : id;
+    }),
+  );
+
+  const history = document.getElementById("q-history");
+  history.textContent = "";
+  for (const d of ward.doctors) {
+    history.appendChild(line(`${d.name} · ${d.specialty}`, `${d.episodes.length} episode(s)`));
+  }
+  if (ward.doctors.length === 0) history.appendChild(empty("No doctors hired"));
+
+  const rooms = document.getElementById("q-rooms");
+  rooms.textContent = "";
+  const free = ward.rooms.filter((r) => r.occupants.length < r.capacity).length;
+  rooms.appendChild(line("Free beds", `${free} of ${ward.rooms.length}`));
+  for (const r of ward.rooms) {
+    const spots = r.capacity - r.occupants.length;
+    rooms.appendChild(line(`Room ${r.number}`, spots > 0 ? `${spots} free` : "full"));
+  }
+  if (ward.rooms.length === 0) rooms.appendChild(empty("No rooms registered"));
+
+  fillList(
+    "q-severe",
+    ward.severeReport.map((s) => `${s.name} — ${s.count} episode(s)`),
+  );
+
+  const log = document.getElementById("q-log");
+  log.textContent = "";
+  const recent = ward.history.slice(-6).reverse();
+  for (const e of recent) {
+    const p = byId.get(e.patient);
+    log.appendChild(line(e.summary, e.time));
+  }
+  if (recent.length === 0) log.appendChild(empty("No episodes yet"));
+}
+
+function fillList(id, items) {
+  const list = document.getElementById(id);
+  list.textContent = "";
+  if (items.length === 0) {
+    list.appendChild(empty("None"));
+    return;
+  }
+  for (const text of items) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    list.appendChild(li);
+  }
+}
+
+function line(text, meta) {
+  const node = document.createElement("div");
+  node.className = "line";
+  node.textContent = text;
+  if (meta) {
+    const b = document.createElement("b");
+    b.textContent = " " + meta;
+    node.appendChild(b);
+  }
+  return node;
+}
+
+function empty(text) {
+  const node = document.createElement("div");
+  node.className = "empty";
+  node.textContent = text;
+  return node;
+}
+
+function toggleEvidence() {
+  evidenceHidden = !evidenceHidden;
+  stage.classList.toggle("evidence-hidden", evidenceHidden);
 }
 
 // --- actions -----------------------------------------------------------------
@@ -503,6 +593,9 @@ window.addEventListener("keydown", (event) => {
   if (key === " " || key === "spacebar") {
     if (started && !event.repeat) playVallenato();
     event.preventDefault();
+  }
+  if (key === "h" && !event.repeat) {
+    toggleEvidence();
   }
   if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
     event.preventDefault();

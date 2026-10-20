@@ -19,19 +19,50 @@
       </div>
     </header>
 
-    <canvas id="game" width="960" height="600"></canvas>
+    <div class="stage">
+      <canvas id="game" width="960" height="600"></canvas>
+
+      <aside id="evidence">
+        <h2>Ward evidence</h2>
+        <p class="note">These panels read the same <code>hospital</code> methods the statement asks for.</p>
+
+        <section>
+          <h3>5.1 · Asleep in a hallway</h3>
+          <ul id="q-hallway"></ul>
+        </section>
+        <section>
+          <h3>5.2 · Episodes per doctor</h3>
+          <div id="q-history"></div>
+        </section>
+        <section>
+          <h3>5.3 · Bed availability</h3>
+          <div id="q-rooms"></div>
+        </section>
+        <section>
+          <h3>5.4 · Severity report</h3>
+          <ul id="q-severe"></ul>
+        </section>
+        <section>
+          <h3>Recent episodes</h3>
+          <div id="q-log"></div>
+        </section>
+      </aside>
+    </div>
 
     <p class="help">
       Move with <b>WASD</b> or the <b>arrows</b>. Walk into a sleeping patient to wake them.
       Press <b>SPACE</b> to play the vallenato accordion and rouse everyone nearby.
-      Narcolepsy strikes again every few seconds, so keep moving.
+      The hospital keeps working while you play: the narcolepsy sends people back to sleep, and the
+      ward automatically gives a free bed to whoever is stuck in a hallway and dispatches the next
+      attender — just like the demonstration scenario.
+      Press <b>H</b> to hide or show the evidence panel.
     </p>
   </div>
 
   <div id="overlay" class="overlay">
     <div class="card">
       <h2>Coste on the ward</h2>
-      <p>Wake every patient before the narcolepsy makes them doze off again.</p>
+      <p>Keep the ward awake: wake every patient before the narcolepsy makes them doze off again. The hospital takes care of the beds and the attenders; your job is to keep bringing people back.</p>
       <button id="start">Start</button>
     </div>
   </div>
