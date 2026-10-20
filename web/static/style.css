@@ -335,8 +335,31 @@ button.danger { background: transparent; color: #ffd9e2; border: 1px solid var(-
   padding: 0.7rem 0.8rem;
 }
 .staff .member .name { font-weight: 600; }
-.staff .member .meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+.staff .member .meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; line-height: 1.5; }
+.staff .member .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; align-items: center; }
+.staff .member .actions .patient-picker { flex: 1 1 100%; }
 .staff .member .episodes { margin-top: 0.4rem; display: flex; flex-direction: column; gap: 0.15rem; }
+
+/* --- sprite framing: every actor is drawn inside its pixel frames --- */
+.patient .sprite,
+.staff .member .sprite {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  background-clip: content-box;
+}
+
+.patient-picker {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: #12152e;
+  color: var(--ink);
+  min-width: 0;
+  width: 100%;
+}
 
 /* --- episodes / tables --- */
 .table-wrap { overflow-x: auto; }

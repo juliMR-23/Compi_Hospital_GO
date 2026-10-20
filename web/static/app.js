@@ -54,6 +54,7 @@ const SPRITES = {
 };
 
 const WALK_MS = 1000;
+const MAX_CARE = 4; // a Doctor holds at most 4 patients under care (hospital model)
 
 let state = null;
 let lastHistoryLength = -1;
@@ -265,7 +266,7 @@ function renderStaff(data) {
       card = createStaffCard();
       staffCards.set(s.id, card);
     }
-    updateStaffCard(card, s);
+    updateStaffCard(card, s, data);
   }
   for (const [id, card] of staffCards) {
     if (!seen.has(id)) {
@@ -282,19 +283,23 @@ function createStaffCard() {
   const info = el("div");
   const name = el("div", "name");
   const meta = el("div", "meta");
+  const actions = el("div", "actions");
   const episodes = el("div", "episodes");
-  info.append(name, meta, episodes);
+  info.append(name, meta, actions, episodes);
   el2.append(sprite, info);
-  return { el: el2, sprite, name, meta, episodes };
+  return { el: el2, sprite, name, meta, actions, episodes, picker: null };
 }
 
-function updateStaffCard(card, s) {
+function updateStaffCard(card, s, data) {
   const set = s.role === "Doctor" ? SPRITES.doctor : SPRITES.orderly;
   const walking = (staffWalkUntil.get(s.id) || 0) > Date.now();
   setAnim(card.sprite, walking ? set.walk : set.idle);
   card.name.textContent = s.id + " · " + s.name;
   const extra = s.specialty ? " · " + s.specialty : "";
-  card.meta.textContent = s.role + " · age " + s.age + extra + " · " + s.episodes.length + " episode(s)";
+  const load = s.role === "Doctor" && s.underCare ? s.underCare.length + "/" + MAX_CARE + " under care · " : "";
+  card.meta.textContent = s.role + " · age " + s.age + extra + " · " + load + s.episodes.length + " episode(s)";
+
+  renderStaffActions(card, s, data);
 
   card.episodes.textContent = "";
   for (const e of s.episodes) {
@@ -302,6 +307,40 @@ function updateStaffCard(card, s) {
     row.append(el("span", "time", e.time), document.createTextNode(e.summary));
     card.episodes.appendChild(row);
   }
+}
+
+// The attender is an actor: a doctor can take a patient under care (diagnose) or
+// answer a sleep emergency; everyone can be sent to a patient. The buttons reuse
+// the same /api/action endpoints, passing this staff id so the chosen doctor is
+// the one who acts.
+function renderStaffActions(card, s, data) {
+  const actions = card.actions;
+  actions.textContent = "";
+
+  if (s.role !== "Doctor") {
+    actions.append(
+      button("Dispatch to hallway", () => run({ type: "attend-hallway" })),
+    );
+    return;
+  }
+
+  const picker = el("select", "patient-picker");
+  const previous = card.picker ? card.picker.value : "";
+  for (const p of data.patients) {
+    const option = el("option", null, p.id + " · " + p.name);
+    option.value = p.id;
+    picker.appendChild(option);
+  }
+  if (previous) picker.value = previous;
+  card.picker = picker;
+
+  const selected = () => picker.value;
+  actions.append(
+    picker,
+    button("Diagnose", () => run({ type: "diagnose", patient: selected(), doctor: s.id })),
+    button("Attend sleep", () => run({ type: "attend-sleep", patient: selected(), doctor: s.id })),
+    button("Dispatch", () => run({ type: "dispatch", patient: selected() })),
+  );
 }
 
 // When a new episode appears, the attender that just responded walks to it.
