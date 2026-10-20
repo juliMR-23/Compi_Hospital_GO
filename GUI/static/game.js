@@ -8,17 +8,20 @@ const W = 960;
 const H = 600;
 const SCALE = 3; // 14x14 frames -> 42x42 pixels
 
+// One PNG strip per animation. Idle loops run slow on purpose so the pixel art
+// breathes; walk loops are quicker so movement reads at once. Coste's sprites are
+// drawn facing left, so the draw call flips them when the actor moves right.
 const ANIMS = {
   costeBase: { sheet: "Coste-base.png", frames: 1, fw: 14, fh: 14, fps: 1 },
-  costeBlink: { sheet: "Coste-idle1-eyes.png", frames: 2, fw: 14, fh: 14, fps: 2 },
-  costeVallenato: { sheet: "Coste-idle2-acordeon.png", frames: 23, fw: 14, fh: 14, fps: 15 },
-  costeWalk: { sheet: "Coste-walk.png", frames: 4, fw: 14, fh: 14, fps: 9 },
-  costeAsleep: { sheet: "Coste-asleep.png", frames: 10, fw: 14, fh: 14, fps: 5 },
-  doctorIdle: { sheet: "Doctor-idle.png", frames: 2, fw: 14, fh: 14, fps: 2 },
-  doctorWalk: { sheet: "Doctor-walk.png", frames: 4, fw: 14, fh: 14, fps: 9 },
-  orderlyIdle: { sheet: "Orderly-idle.png", frames: 2, fw: 14, fh: 14, fps: 2 },
-  orderlyWalk: { sheet: "Orderly-walk.png", frames: 4, fw: 14, fh: 14, fps: 9 },
-  catIdle: { sheet: "Cat-idle.png", frames: 4, fw: 10, fh: 8, fps: 4 },
+  costeBlink: { sheet: "Coste-idle1-eyes.png", frames: 2, fw: 14, fh: 14, fps: 1.5 },
+  costeVallenato: { sheet: "Coste-idle2-acordeon.png", frames: 23, fw: 14, fh: 14, fps: 9 },
+  costeWalk: { sheet: "Coste-walk.png", frames: 4, fw: 14, fh: 14, fps: 7 },
+  costeAsleep: { sheet: "Coste-asleep.png", frames: 10, fw: 14, fh: 14, fps: 4 },
+  doctorIdle: { sheet: "Doctor-idle.png", frames: 2, fw: 14, fh: 14, fps: 1.5 },
+  doctorWalk: { sheet: "Doctor-walk.png", frames: 4, fw: 14, fh: 14, fps: 7 },
+  orderlyIdle: { sheet: "Orderly-idle.png", frames: 2, fw: 14, fh: 14, fps: 1.5 },
+  orderlyWalk: { sheet: "Orderly-walk.png", frames: 4, fw: 14, fh: 14, fps: 7 },
+  catIdle: { sheet: "Cat-idle.png", frames: 4, fw: 10, fh: 8, fps: 3 },
 };
 
 const POWER_COOLDOWN = 4200;
@@ -165,6 +168,8 @@ function buildActors(ward) {
       sprite: new Sprite(ANIMS.costeAsleep, SCALE),
       wakeCooldown: 0,
       zt: Math.random() * 10,
+      idleVallenato: true,
+      idleSwitchAt: 0,
     };
   });
 
@@ -276,9 +281,7 @@ function update(dt) {
   player.sprite.update(dt);
 
   for (const p of patients) {
-    p.sprite.set(p.stateKey === "Awake" ? ANIMS.costeVallenato : ANIMS.costeAsleep, SCALE);
-    p.sprite.update(dt);
-    p.zt += dt;
+    updatePatientAnim(p, dt);
   }
 
   for (const s of staff) wander(s, dt, 55);
@@ -327,6 +330,24 @@ function wander(e, dt, speed) {
   e.sprite.update(dt);
 }
 
+// An awake Coste mostly plays the vallenato (accordion) idle and blinks now and
+// then, so every authored idle is used; a sleeping patient plays the asleep loop.
+function updatePatientAnim(p, dt) {
+  p.zt += dt;
+  if (p.stateKey !== "Awake") {
+    p.sprite.set(ANIMS.costeAsleep, SCALE);
+    p.sprite.update(dt);
+    return;
+  }
+  const now = performance.now();
+  if (now >= p.idleSwitchAt) {
+    p.idleVallenato = !p.idleVallenato;
+    p.idleSwitchAt = now + (p.idleVallenato ? 2400 + Math.random() * 2600 : 900 + Math.random() * 900);
+  }
+  p.sprite.set(p.idleVallenato ? ANIMS.costeVallenato : ANIMS.costeBlink, SCALE);
+  p.sprite.update(dt);
+}
+
 // An awake Coste celebrates with the accordion, so the vallenato idle is the
 // base pose everywhere on screen; the sleeping frame is the exception.
 
@@ -336,9 +357,10 @@ function draw() {
   drawFloor();
   drawBeds();
   for (const p of patients) drawPatient(p);
-  for (const s of staff) s.sprite.draw(ctx, s.x, s.y, s.dir < 0);
+  for (const s of staff) s.sprite.draw(ctx, s.x, s.y, s.dir > 0);
+  // The cat faces the other way: its head is on the right, so it flips moving left.
   if (cat) cat.sprite.draw(ctx, cat.x, cat.y, cat.dir < 0);
-  player.sprite.draw(ctx, player.x, player.y, player.dir < 0);
+  player.sprite.draw(ctx, player.x, player.y, player.dir > 0);
   drawEffects();
 }
 
