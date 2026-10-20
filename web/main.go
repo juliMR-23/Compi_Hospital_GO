@@ -1,9 +1,15 @@
 // Command web is the optional graphical interface (bonus, Section 7): a small
-// REST API served with the standard library plus a static HTML/JS front end.
+// REST API served with the standard library plus a static HTML/JS front end. It
+// is a live moderation panel of the whole hospital: it shows every registered
+// patient, the staff and the episode records, lets you create new entities and
+// drive every method of the model (sleep a patient, let the hospital dispatch an
+// attender, call diagnose, and so on).
 //
 // It imports the hospital package and drives it only through its exported API,
 // so the model keeps no knowledge of the display and is not modified to add the
-// interface. Run it from the repository root so the sprite in assets/ is found:
+// interface: all validation stays in the model and the UI only displays the
+// errors it receives. Run it from the repository root so the sprites in assets/
+// are found:
 //
 //	go run ./web
 package main
@@ -57,7 +63,7 @@ func main() {
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(*assets))))
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 
-	log.Printf("Hospital UI on http://localhost%s (sprite from %s/)", *addr, *assets)
+	log.Printf("Hospital moderation panel on http://localhost%s (sprites from %s/)", *addr, *assets)
 	log.Fatal(http.ListenAndServe(*addr, mux))
 }
 
@@ -66,7 +72,8 @@ func main() {
 // newScenario builds the mandatory Section 6 hospital through the public API and
 // seeds a few states so every sprite animation is visible as soon as the page
 // loads: some patients are awake (idle), some are asleep in bed, and one is
-// asleep in the hallway.
+// asleep in the hallway. It is also the starting point of the moderation panel:
+// every entity can then be created, queried and mutated live from the UI.
 func newScenario() (*hospital.Hospital, error) {
 	h, err := hospital.NewHospital("Hospital de los Costeños con Narcolepsia")
 	if err != nil {
@@ -125,7 +132,8 @@ func newScenario() (*hospital.Hospital, error) {
 		}
 	}
 
-	// Two patients asleep in bed, one asleep in the hallway; Luz and Alexander stay awake.
+	// Two patients asleep in bed, one asleep in the hallway; Luz and Alexander
+	// stay awake so the "sleep attack" and the diagnose flow can be tried live.
 	if err := yeimy.SufferSleepAttack("cafetería"); err != nil {
 		return nil, err
 	}
@@ -133,6 +141,9 @@ func newScenario() (*hospital.Hospital, error) {
 		return nil, err
 	}
 	if _, err := h.Dispatch(yeimy, "cafetería"); err != nil {
+		return nil, err
+	}
+	if err := karen.DiagnosePatient(yeimy); err != nil {
 		return nil, err
 	}
 	if err := elkin.SufferSleepAttack("sala de espera"); err != nil {
@@ -164,12 +175,16 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 }
 
 type actionRequest struct {
-	Type     string `json:"type"`
-	Patient  string `json:"patient"`
-	Location string `json:"location"`
-	Name     string `json:"name"`
-	Age      int    `json:"age"`
-	Level    string `json:"level"`
+	Type      string `json:"type"`
+	Patient   string `json:"patient"`
+	Location  string `json:"location"`
+	Name      string `json:"name"`
+	Age       int    `json:"age"`
+	Level     string `json:"level"`
+	Specialty string `json:"specialty"`
+	Number    int    `json:"number"`
+	Capacity  int    `json:"capacity"`
+	Doctor    string `json:"doctor"`
 }
 
 func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +198,8 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Type {
-	case "admit", "sleep", "wake", "assign-room", "dispatch", "attend-hallway", "reset":
+	case "admit", "sleep", "wake", "assign-room", "dispatch", "attend-hallway",
+		"diagnose", "attend-sleep", "hire-doctor", "hire-orderly", "register-room", "reset":
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown action %q", req.Type))
 		return
@@ -202,6 +218,9 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 }
 
 // apply runs one action against the hospital. It is called with the lock held.
+// It coordinates the model, never validates for it: every business rule lives in
+// the hospital package, and whatever error comes back is forwarded unchanged so
+// the front end only has to display it.
 func (s *server) apply(req actionRequest) error {
 	switch req.Type {
 	case "admit":
@@ -215,7 +234,14 @@ func (s *server) apply(req actionRequest) error {
 			return p.SufferSleepAttack(location)
 		})
 	case "wake":
-		return s.withPatient(req.Patient, (*hospital.Patient).WakeUp)
+		// Waking a patient also reopens their case: the hospital immediately
+		// dispatches an attender to attend the episode that just ended.
+		return s.withPatient(req.Patient, func(p *hospital.Patient) error {
+			if p.State() == hospital.Awake {
+				return fmt.Errorf("patient %s wake up: %w", p.ID(), hospital.ErrIsAwake)
+			}
+			return p.WakeUp()
+		})
 	case "assign-room":
 		return s.withPatient(req.Patient, func(p *hospital.Patient) error {
 			_, err := s.h.AssignRoom(p)
@@ -232,6 +258,16 @@ func (s *server) apply(req actionRequest) error {
 		})
 	case "attend-hallway":
 		return firstErr(s.h.AttendHallwayPatients())
+	case "diagnose":
+		return s.diagnose(req)
+	case "attend-sleep":
+		return s.attendSleep(req)
+	case "hire-doctor":
+		return s.hireDoctor(req)
+	case "hire-orderly":
+		return s.hireOrderly(req)
+	case "register-room":
+		return s.registerRoom(req)
 	case "reset":
 		h, err := newScenario()
 		if err != nil {
@@ -242,6 +278,76 @@ func (s *server) apply(req actionRequest) error {
 	default:
 		return fmt.Errorf("unknown action %q", req.Type)
 	}
+}
+
+// diagnose puts a doctor in charge of a patient (Doctor.DiagnosePatient). The
+// target doctor is optional: when omitted the hospital picks the next attender
+// in round-robin order, but only if it is a doctor.
+func (s *server) diagnose(req actionRequest) error {
+	p, err := s.patient(req.Patient)
+	if err != nil {
+		return err
+	}
+	doctor, err := s.pickDoctor(req.Doctor)
+	if err != nil {
+		return err
+	}
+	return doctor.DiagnosePatient(p)
+}
+
+// attendSleep calls Doctor.AttendSleepEmergency directly, so the "only a
+// sleeping patient is a sleep emergency" rule can be exercised on its own.
+func (s *server) attendSleep(req actionRequest) error {
+	p, err := s.patient(req.Patient)
+	if err != nil {
+		return err
+	}
+	doctor, err := s.pickDoctor(req.Doctor)
+	if err != nil {
+		return err
+	}
+	return doctor.AttendSleepEmergency(p)
+}
+
+func (s *server) hireDoctor(req actionRequest) error {
+	d, err := hospital.NewDoctor(strings.TrimSpace(req.Name), req.Age, strings.TrimSpace(req.Specialty))
+	if err != nil {
+		return err
+	}
+	return s.h.HireDoctor(d)
+}
+
+func (s *server) hireOrderly(req actionRequest) error {
+	o, err := hospital.NewOrderly(strings.TrimSpace(req.Name), req.Age)
+	if err != nil {
+		return err
+	}
+	return s.h.HireOrderly(o)
+}
+
+func (s *server) registerRoom(req actionRequest) error {
+	room, err := hospital.NewRoom(req.Number, req.Capacity)
+	if err != nil {
+		return err
+	}
+	return s.h.RegisterRoom(room)
+}
+
+func (s *server) pickDoctor(id string) (*hospital.Doctor, error) {
+	if strings.TrimSpace(id) != "" {
+		for _, d := range s.h.Doctors() {
+			if d.ID() == id {
+				return d, nil
+			}
+		}
+		return nil, fmt.Errorf("doctor %q not found", id)
+	}
+	attender := s.h.NextAttender()
+	doctor, ok := attender.(*hospital.Doctor)
+	if !ok {
+		return nil, fmt.Errorf("no doctor available to take charge (next attender is not a doctor)")
+	}
+	return doctor, nil
 }
 
 func (s *server) admit(req actionRequest) error {
@@ -309,10 +415,12 @@ type stateDTO struct {
 }
 
 type staffDTO struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	Specialty string `json:"specialty,omitempty"`
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	Role      string       `json:"role"`
+	Age       int          `json:"age"`
+	Specialty string       `json:"specialty,omitempty"`
+	Episodes  []episodeDTO `json:"episodes"`
 }
 
 type doctorDTO struct {
@@ -340,6 +448,7 @@ type patientDTO struct {
 	Location string  `json:"location"`
 	Room     *int    `json:"room"`
 	Doctor   *string `json:"doctor"`
+	Episodes int     `json:"episodes"`
 }
 
 type episodeDTO struct {
@@ -373,13 +482,21 @@ func (s *server) snapshot() stateDTO {
 	}
 
 	for _, a := range h.Staff() {
-		dto := staffDTO{ID: a.ID(), Name: a.Name()}
+		dto := staffDTO{ID: a.ID(), Name: a.Name(), Episodes: []episodeDTO{}}
 		switch v := a.(type) {
 		case *hospital.Doctor:
 			dto.Role = "Doctor"
+			dto.Age = v.Age()
 			dto.Specialty = v.Specialty()
+			for _, e := range v.MyEpisodes() {
+				dto.Episodes = append(dto.Episodes, episodeToDTO(e))
+			}
 		case *hospital.Orderly:
 			dto.Role = "Orderly"
+			dto.Age = v.Age()
+			for _, e := range v.EpisodesAttended() {
+				dto.Episodes = append(dto.Episodes, episodeToDTO(e))
+			}
 		}
 		st.Staff = append(st.Staff, dto)
 	}
@@ -420,6 +537,11 @@ func (s *server) snapshot() stateDTO {
 		if d := p.Doctor(); d != nil {
 			id := d.ID()
 			dto.Doctor = &id
+		}
+		for _, e := range h.History() {
+			if e.Patient() == p {
+				dto.Episodes++
+			}
 		}
 		st.Patients = append(st.Patients, dto)
 	}
