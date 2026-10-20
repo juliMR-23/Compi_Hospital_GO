@@ -1,7 +1,9 @@
 "use strict";
 
-// Small REST client + renderer for the hospital viewer. The API on the Go side
-// owns a mutex, so every call here is safe even while the page polls.
+// Live moderation panel for the hospital. The Go API owns the model and the
+// mutex, so this file only: (1) reads /api/state, (2) posts actions, (3) renders
+// the result. It performs no validation of its own — whatever error the model
+// raises is displayed as-is, so the business rules stay in the hospital package.
 
 const API = {
   state() {
@@ -25,71 +27,88 @@ const HALLWAY_LOCATIONS = [
   "sala de espera",
   "cafetería",
   "pasillo de urgencias",
+  "fila de radiología",
 ];
 
-// Each animation is its own PNG strip: frames side by side, transparent gaps.
-// Coste/doctor/orderly are 14x14 frames; the cat is 10x8.
+// One PNG strip per animation; frames sit side by side with transparent gaps.
+// Coste/doctor/orderly are 14x14 frames, the cat is 10x8. Durations are slow on
+// purpose: idle animations read better when they breathe.
 const SPRITES = {
   coste: {
-    base: { sheet: "Coste-base.png", frames: 1, dur: "1.2s" },
-    blink: { sheet: "Coste-idle1-eyes.png", frames: 2, dur: "1s" },
-    vallenato: { sheet: "Coste-idle2-acordeon.png", frames: 23, dur: "1.5s" },
-    walk: { sheet: "Coste-walk.png", frames: 4, dur: "0.5s" },
-    asleep: { sheet: "Coste-asleep.png", frames: 10, dur: "1.4s" },
+    blink: { sheet: "Coste-idle1-eyes.png", frames: 2, dur: "1.6s" },
+    vallenato: { sheet: "Coste-idle2-acordeon.png", frames: 23, dur: "2.6s" },
+    walk: { sheet: "Coste-walk.png", frames: 4, dur: "0.6s" },
+    asleep: { sheet: "Coste-asleep.png", frames: 10, dur: "2.2s" },
   },
   doctor: {
-    idle: { sheet: "Doctor-idle.png", frames: 2, dur: "1.1s" },
-    walk: { sheet: "Doctor-walk.png", frames: 4, dur: "0.5s" },
+    idle: { sheet: "Doctor-idle.png", frames: 2, dur: "1.8s" },
+    walk: { sheet: "Doctor-walk.png", frames: 4, dur: "0.6s" },
   },
   orderly: {
-    idle: { sheet: "Orderly-idle.png", frames: 2, dur: "1.1s" },
-    walk: { sheet: "Orderly-walk.png", frames: 4, dur: "0.5s" },
+    idle: { sheet: "Orderly-idle.png", frames: 2, dur: "1.8s" },
+    walk: { sheet: "Orderly-walk.png", frames: 4, dur: "0.6s" },
   },
   cat: {
-    idle: { sheet: "Cat-idle.png", frames: 4, dur: "1.3s" },
+    idle: { sheet: "Cat-idle.png", frames: 4, dur: "2s" },
   },
 };
 
-const GOTO_HALLWAY = 1000; // ms the walk frame is held while a patient moves
+const WALK_MS = 1000;
 
 let state = null;
 let lastHistoryLength = -1;
 
-const cards = new Map(); // patient id -> { el, sprite, name, meta, idleTimer }
-const prevKey = new Map(); // patient id -> last stateKey
-const walkUntil = new Map(); // patient id -> timestamp until which Walk plays
+const cards = new Map();
+const prevKey = new Map();
+const walkUntil = new Map();
+const staffCards = new Map();
+const staffWalkUntil = new Map();
 
-const staffCards = new Map(); // staff id -> { el, sprite, name, meta }
-const staffWalkUntil = new Map(); // staff id -> timestamp until which Walk plays
+// --- helpers -----------------------------------------------------------------
 
 function findPatient(id) {
   return state ? state.patients.find((p) => p.id === id) : null;
+}
+
+function staffById(id) {
+  return state ? state.staff.find((s) => s.id === id) : null;
 }
 
 function pickLocation() {
   return HALLWAY_LOCATIONS[Math.floor(Math.random() * HALLWAY_LOCATIONS.length)];
 }
 
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function button(label, fn, className) {
+  const b = el("button", "small" + (className ? " " + className : ""), label);
+  b.addEventListener("click", fn);
+  return b;
+}
+
 // --- sprite helpers ----------------------------------------------------------
 
-function setAnim(el, anim) {
-  if (el.dataset.sheet === anim.sheet && el.dataset.frames === String(anim.frames)) return;
-  el.dataset.sheet = anim.sheet;
-  el.dataset.frames = String(anim.frames);
-  el.style.setProperty("--sheet", `url("/assets/${anim.sheet}")`);
-  el.style.setProperty("--frames", String(anim.frames));
-  el.style.setProperty("--dur", anim.dur);
-  if (!el.style.getPropertyValue("--delay")) {
+function setAnim(node, anim) {
+  if (node.dataset.sheet === anim.sheet && node.dataset.frames === String(anim.frames)) return;
+  node.dataset.sheet = anim.sheet;
+  node.dataset.frames = String(anim.frames);
+  node.style.setProperty("--sheet", `url("/assets/${anim.sheet}")`);
+  node.style.setProperty("--frames", String(anim.frames));
+  node.style.setProperty("--dur", anim.dur);
+  if (!node.style.getPropertyValue("--delay")) {
     // A negative delay starts the loop mid-way, so idles never run in sync.
     const seconds = Number.parseFloat(anim.dur);
-    el.style.setProperty("--delay", `-${(Math.random() * seconds).toFixed(2)}s`);
+    node.style.setProperty("--delay", `-${(Math.random() * seconds).toFixed(2)}s`);
   }
 }
 
 function newSprite(extraClass) {
-  const el = document.createElement("div");
-  el.className = extraClass ? "sprite " + extraClass : "sprite";
-  return el;
+  return el("div", extraClass ? "sprite " + extraClass : "sprite");
 }
 
 // --- rendering ---------------------------------------------------------------
@@ -97,12 +116,34 @@ function newSprite(extraClass) {
 function render(data) {
   state = data;
   document.getElementById("hospital-name").textContent = data.name;
+  renderStats(data);
   renderRooms(data);
   renderPatients(data);
   renderStaff(data);
+  renderHistory(data);
   renderQueries(data);
   renderDecor();
   detectWalks(data);
+}
+
+function renderStats(data) {
+  const awakeCount = data.patients.filter((p) => p.stateKey === "Awake").length;
+  const stats = [
+    { value: data.patients.length, label: "Patients" },
+    { value: awakeCount, label: "Awake" },
+    { value: data.staff.length, label: "Staff" },
+    { value: data.doctors.length, label: "Doctors" },
+    { value: data.rooms.length, label: "Rooms" },
+    { value: data.hallway.length, label: "In hallway" },
+    { value: data.history.length, label: "Episodes" },
+  ];
+  const wrap = document.getElementById("stats");
+  wrap.textContent = "";
+  for (const s of stats) {
+    const card = el("div", "stat");
+    card.append(el("div", "value", String(s.value)), el("div", "label", s.label));
+    wrap.appendChild(card);
+  }
 }
 
 function renderPatients(data) {
@@ -114,7 +155,6 @@ function renderPatients(data) {
     if (!card) {
       card = createPatientCard(p);
       cards.set(p.id, card);
-      wrap.appendChild(card.el);
     }
     updatePatientCard(card, p);
   }
@@ -129,51 +169,22 @@ function renderPatients(data) {
   }
 }
 
-function createPatientCard(p) {
-  const el = document.createElement("div");
-  el.className = "patient";
-
+function createPatientCard() {
+  const el2 = el("div", "patient");
   const sprite = newSprite();
-
-  const info = document.createElement("div");
-  const name = document.createElement("div");
-  name.className = "name";
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  const actions = document.createElement("div");
-  actions.className = "actions";
-
-  const button = (label, fn) => {
-    const b = document.createElement("button");
-    b.className = "small";
-    b.textContent = label;
-    b.addEventListener("click", fn);
-    return b;
-  };
-
-  actions.append(
-    button("Sleep", () => run({ type: "sleep", patient: p.id, location: pickLocation() })),
-    button("Wake", () => run({ type: "wake", patient: p.id })),
-    button("Assign room", () => run({ type: "assign-room", patient: p.id })),
-    button("Dispatch", () => {
-      const current = findPatient(p.id);
-      run({ type: "dispatch", patient: p.id, location: (current && current.location) || "hallway" });
-    }),
-  );
-
+  const info = el("div");
+  const name = el("div", "name");
+  const meta = el("div", "meta");
+  const actions = el("div", "actions");
   info.append(name, meta, actions);
-  el.append(sprite, info);
-  return { el, sprite, name, meta, idleTimer: null };
+  el2.append(sprite, info);
+  return { el: el2, sprite, name, meta, actions, idleTimer: null };
 }
 
 function updatePatientCard(card, p) {
   const previous = prevKey.get(p.id);
   if (previous !== undefined && previous !== p.stateKey) {
-    walkUntil.set(p.id, Date.now() + GOTO_HALLWAY);
-    window.setTimeout(() => {
-      const latest = findPatient(p.id);
-      if (latest) updatePatientCard(card, latest);
-    }, GOTO_HALLWAY + 50);
+    walkUntil.set(p.id, Date.now() + WALK_MS);
   }
   prevKey.set(p.id, p.stateKey);
 
@@ -193,28 +204,46 @@ function updatePatientCard(card, p) {
 
   card.name.textContent = p.id + " · " + p.name;
 
-  const badge = document.createElement("span");
-  badge.className = "badge " + p.level;
-  badge.textContent = p.level;
-
+  const badge = el("span", "badge " + p.level, p.level);
+  const pill = el("span", "state-pill " + p.stateKey, p.state);
   const where = p.room != null ? "room " + p.room : p.location || "—";
+  const doctor = p.doctor ? " · Dr. " + p.doctor : " · no doctor";
   card.meta.textContent = "";
   card.meta.append(
     badge,
-    document.createTextNode(" " + p.state + " · " + where + " · age " + p.age),
+    document.createTextNode(" "),
+    pill,
+    document.createTextNode(` · ${where} · age ${p.age} · ${p.episodes} episode(s)${doctor}`),
+  );
+
+  renderPatientActions(card.actions, p);
+}
+
+function renderPatientActions(actions, p) {
+  actions.textContent = "";
+  actions.append(
+    button("Sleep", () => run({ type: "sleep", patient: p.id, location: pickLocation() })),
+    button("Wake", () => run({ type: "wake", patient: p.id })),
+    button("Assign room", () => run({ type: "assign-room", patient: p.id })),
+    button("Dispatch", () => {
+      const current = findPatient(p.id);
+      run({ type: "dispatch", patient: p.id, location: (current && current.location) || "hallway" });
+    }),
+    button("Diagnose", () => run({ type: "diagnose", patient: p.id })),
+    button("Attend sleep", () => run({ type: "attend-sleep", patient: p.id })),
   );
 }
 
 // An awake Coste mostly plays the vallenato (accordion) idle and blinks now and
-// then, so the animation the artist put effort into is front and centre.
+// then, so both authored idle loops are visible.
 function startIdle(card) {
   if (card.idleTimer) return;
   const playVallenato = () => {
     setAnim(card.sprite, SPRITES.coste.vallenato);
     card.idleTimer = window.setTimeout(() => {
       setAnim(card.sprite, SPRITES.coste.blink);
-      card.idleTimer = window.setTimeout(playVallenato, 1400 + Math.random() * 1600);
-    }, 2600 + Math.random() * 2200);
+      card.idleTimer = window.setTimeout(playVallenato, 2000 + Math.random() * 2200);
+    }, 3200 + Math.random() * 2600);
   };
   playVallenato();
 }
@@ -233,9 +262,8 @@ function renderStaff(data) {
     seen.add(s.id);
     let card = staffCards.get(s.id);
     if (!card) {
-      card = createStaffCard(s);
+      card = createStaffCard();
       staffCards.set(s.id, card);
-      wrap.appendChild(card.el);
     }
     updateStaffCard(card, s);
   }
@@ -248,18 +276,16 @@ function renderStaff(data) {
   }
 }
 
-function createStaffCard(s) {
-  const el = document.createElement("div");
-  el.className = "member";
+function createStaffCard() {
+  const el2 = el("div", "member");
   const sprite = newSprite();
-  const info = document.createElement("div");
-  const name = document.createElement("div");
-  name.className = "name";
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  info.append(name, meta);
-  el.append(sprite, info);
-  return { el, sprite, name, meta };
+  const info = el("div");
+  const name = el("div", "name");
+  const meta = el("div", "meta");
+  const episodes = el("div", "episodes");
+  info.append(name, meta, episodes);
+  el2.append(sprite, info);
+  return { el: el2, sprite, name, meta, episodes };
 }
 
 function updateStaffCard(card, s) {
@@ -267,19 +293,22 @@ function updateStaffCard(card, s) {
   const walking = (staffWalkUntil.get(s.id) || 0) > Date.now();
   setAnim(card.sprite, walking ? set.walk : set.idle);
   card.name.textContent = s.id + " · " + s.name;
-  card.meta.textContent = s.role + (s.specialty ? " · " + s.specialty : "");
+  const extra = s.specialty ? " · " + s.specialty : "";
+  card.meta.textContent = s.role + " · age " + s.age + extra + " · " + s.episodes.length + " episode(s)";
+
+  card.episodes.textContent = "";
+  for (const e of s.episodes) {
+    const row = el("div", "episode");
+    row.append(el("span", "time", e.time), document.createTextNode(e.summary));
+    card.episodes.appendChild(row);
+  }
 }
 
-// When a new episode shows up, the attender that just responded walks to it.
+// When a new episode appears, the attender that just responded walks to it.
 function detectWalks(data) {
   if (lastHistoryLength >= 0 && data.history.length > lastHistoryLength) {
     const latest = data.history[data.history.length - 1];
-    staffWalkUntil.set(latest.attender, Date.now() + GOTO_HALLWAY + 400);
-    window.setTimeout(() => {
-      const card = staffCards.get(latest.attender);
-      const staff = state && state.staff.find((x) => x.id === latest.attender);
-      if (card && staff) updateStaffCard(card, staff);
-    }, GOTO_HALLWAY + 450);
+    staffWalkUntil.set(latest.attender, Date.now() + WALK_MS + 400);
   }
   lastHistoryLength = data.history.length;
 }
@@ -289,7 +318,7 @@ function renderDecor() {
   if (wrap.childElementCount) return;
   for (let i = 0; i < 2; i++) {
     const cat = newSprite("cat");
-    cat.style.setProperty("--scale", i === 1 ? "5" : "4");
+    cat.style.setProperty("--scale", i === 1 ? "3" : "2");
     setAnim(cat, SPRITES.cat.idle);
     wrap.appendChild(cat);
   }
@@ -300,33 +329,54 @@ function renderRooms(data) {
   const byId = new Map(data.patients.map((p) => [p.id, p]));
   wrap.textContent = "";
   for (const r of data.rooms) {
-    const el = document.createElement("div");
-    el.className = "room" + (r.occupants.length ? " occupied" : "");
-
-    const head = document.createElement("div");
-    head.className = "room-head";
-    head.textContent = "Room " + r.number;
-
-    const meta = document.createElement("div");
-    meta.className = "room-meta";
-    meta.textContent = r.state + " · " + r.occupants.length + "/" + r.capacity;
-
-    el.append(head, meta);
+    const room = el("div", "room" + (r.occupants.length ? " occupied" : ""));
+    room.append(el("div", "room-head", "Room " + r.number));
+    room.append(el("div", "room-meta", r.state + " · " + r.occupants.length + "/" + r.capacity));
 
     for (const id of r.occupants) {
+      const row = el("div", "occupant");
       const sprite = newSprite("sleep");
       setAnim(sprite, SPRITES.coste.asleep);
-      el.appendChild(sprite);
-
-      const label = document.createElement("div");
-      label.className = "room-meta";
       const p = byId.get(id);
-      label.textContent = p ? p.name : id;
-      el.appendChild(label);
+      row.append(sprite, el("span", "room-meta", p ? p.name : id));
+      room.appendChild(row);
     }
-
-    wrap.appendChild(el);
+    wrap.appendChild(room);
   }
+}
+
+function renderHistory(data) {
+  const wrap = document.getElementById("history");
+  wrap.textContent = "";
+  if (data.history.length === 0) {
+    wrap.appendChild(el("div", "empty", "No episodes registered yet."));
+    return;
+  }
+  const table = el("table");
+  const head = el("tr");
+  for (const h of ["ID", "Time", "Patient", "Attender", "Location", "Room", "Summary"]) {
+    head.appendChild(el("th", null, h));
+  }
+  table.appendChild(head);
+
+  const body = el("tbody");
+  const byId = new Map(data.patients.map((p) => [p.id, p]));
+  for (const e of data.history) {
+    const tr = el("tr");
+    const p = byId.get(e.patient);
+    tr.append(
+      el("td", "mono", e.id),
+      el("td", "mono", e.time),
+      el("td", null, p ? p.name : e.patient),
+      el("td", null, e.attender),
+      el("td", null, e.location),
+      el("td", null, e.room != null ? "room " + e.room : "—"),
+      el("td", "wrap", e.summary),
+    );
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  wrap.appendChild(table);
 }
 
 function renderQueries(data) {
@@ -340,32 +390,33 @@ function renderQueries(data) {
     }),
   );
 
+  // 5.2 — episodes grouped per doctor.
   const history = document.getElementById("q-history");
   history.textContent = "";
   for (const d of data.doctors) {
-    const title = document.createElement("div");
-    title.className = "meta";
-    title.textContent = d.name + " · " + d.specialty;
-    history.appendChild(title);
-
+    history.appendChild(el("div", "meta", d.name + " · " + d.specialty));
     if (d.episodes.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "No episodes yet";
-      history.appendChild(empty);
+      history.appendChild(el("div", "empty", "No episodes yet"));
       continue;
     }
     for (const e of d.episodes) {
-      const row = document.createElement("div");
-      row.className = "episode";
-      const time = document.createElement("span");
-      time.className = "time";
-      time.textContent = e.time;
-      row.append(time, document.createTextNode(e.summary));
+      const row = el("div", "episode");
+      row.append(el("span", "time", e.time), document.createTextNode(e.summary));
       history.appendChild(row);
     }
   }
 
+  // 5.3 — bed availability, room by room.
+  const rooms = document.getElementById("q-rooms");
+  rooms.textContent = "";
+  const available = data.rooms.filter((r) => r.occupants.length < r.capacity).length;
+  rooms.appendChild(el("div", "meta", available + " of " + data.rooms.length + " room(s) free"));
+  for (const r of data.rooms) {
+    const free = r.capacity - r.occupants.length;
+    rooms.appendChild(el("div", "episode", "Room " + r.number + ": " + (free > 0 ? free + " free" : "full")));
+  }
+
+  // 5.4 — severity report.
   fillList(
     "q-severe",
     data.severeReport.map((s) => s.name + " — " + s.count + " episode(s)"),
@@ -376,16 +427,11 @@ function fillList(id, items) {
   const list = document.getElementById(id);
   list.textContent = "";
   if (items.length === 0) {
-    const li = document.createElement("li");
-    li.className = "empty";
-    li.textContent = "None";
-    list.appendChild(li);
+    list.appendChild(el("li", "empty", "None"));
     return;
   }
   for (const text of items) {
-    const li = document.createElement("li");
-    li.textContent = text;
-    list.appendChild(li);
+    list.appendChild(el("li", null, text));
   }
 }
 
@@ -394,6 +440,7 @@ function fillList(id, items) {
 async function run(action) {
   try {
     render(await API.action(action));
+    toast("OK", true);
   } catch (err) {
     toast(err.message);
   }
@@ -407,44 +454,78 @@ async function refresh() {
   }
 }
 
-function toast(message) {
-  const el = document.getElementById("toast");
-  el.textContent = message;
-  el.classList.add("show");
+function toast(message, ok) {
+  const node = document.getElementById("toast");
+  node.textContent = message;
+  node.classList.toggle("ok", !!ok);
+  node.classList.add("show");
   window.clearTimeout(toast.timer);
-  toast.timer = window.setTimeout(() => el.classList.remove("show"), 2600);
+  toast.timer = window.setTimeout(() => node.classList.remove("show"), 2400);
+}
+
+// --- tabs --------------------------------------------------------------------
+
+function initTabs() {
+  const tabs = document.querySelectorAll("#tabs .tab");
+  const panels = document.querySelectorAll(".tab-panel");
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => {
+      for (const t of tabs) t.classList.toggle("active", t === tab);
+      for (const panel of panels) {
+        panel.classList.toggle("active", panel.dataset.panel === tab.dataset.tab);
+      }
+    });
+  }
 }
 
 // --- wiring ------------------------------------------------------------------
 
-document.getElementById("admit-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const form = event.target;
-  run({
-    type: "admit",
-    name: form.name.value,
-    age: Number(form.age.value),
-    level: form.level.value,
+function wireForms() {
+  document.getElementById("admit-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    run({ type: "admit", name: form.name.value, age: Number(form.age.value), level: form.level.value });
+    form.reset();
   });
-  form.reset();
-});
 
-document.getElementById("attend-hallway").addEventListener("click", () => {
-  run({ type: "attend-hallway" });
-});
+  document.getElementById("doctor-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    run({ type: "hire-doctor", name: form.name.value, age: Number(form.age.value), specialty: form.specialty.value });
+    form.reset();
+  });
 
-document.getElementById("reset").addEventListener("click", () => {
-  cards.forEach(stopIdle);
-  cards.forEach((card) => card.el.remove());
-  cards.clear();
-  prevKey.clear();
-  walkUntil.clear();
-  staffCards.forEach((card) => card.el.remove());
-  staffCards.clear();
-  staffWalkUntil.clear();
-  lastHistoryLength = -1;
-  run({ type: "reset" });
-});
+  document.getElementById("orderly-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    run({ type: "hire-orderly", name: form.name.value, age: Number(form.age.value) });
+    form.reset();
+  });
 
+  document.getElementById("room-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    run({ type: "register-room", number: Number(form.number.value), capacity: Number(form.capacity.value) });
+    form.reset();
+  });
+
+  document.getElementById("attend-hallway").addEventListener("click", () => run({ type: "attend-hallway" }));
+
+  document.getElementById("reset").addEventListener("click", () => {
+    cards.forEach(stopIdle);
+    cards.forEach((card) => card.el.remove());
+    cards.clear();
+    prevKey.clear();
+    walkUntil.clear();
+    staffCards.forEach((card) => card.el.remove());
+    staffCards.clear();
+    staffWalkUntil.clear();
+    lastHistoryLength = -1;
+    run({ type: "reset" });
+  });
+}
+
+initTabs();
+wireForms();
 refresh();
 window.setInterval(refresh, 2500);

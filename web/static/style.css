@@ -23,29 +23,42 @@ body {
 }
 
 header {
-  text-align: center;
-  padding: 1.4rem 1rem 0.4rem;
+  padding: 1.4rem 1rem 0.6rem;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 header h1 {
   margin: 0;
   font-size: 1.5rem;
   letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .tagline {
-  margin: 0.3rem 0 0;
+  margin: 0.5rem auto 0;
+  max-width: 760px;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  text-align: center;
+  line-height: 1.5;
 }
 
-/* the cats wander across the header as decoration */
+.tagline code { color: var(--accent); }
+
+/* the cats wander in the header as decoration */
 .decor {
   display: flex;
-  justify-content: center;
-  gap: 3rem;
-  min-height: 40px;
-  margin-top: 0.5rem;
+  gap: 2.5rem;
+  min-height: 34px;
 }
 .decor .sprite {
   animation: sprite-sheet var(--dur) steps(var(--frames)) infinite, wander 14s ease-in-out infinite;
@@ -55,17 +68,55 @@ header h1 {
 }
 
 @keyframes wander {
-  0%, 100% { transform: translateX(-40px) scaleX(1); }
-  50% { transform: translateX(40px) scaleX(1); }
+  0%, 100% { transform: translateX(-30px); }
+  50% { transform: translateX(30px); }
+}
+
+/* --- tabs --- */
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem;
+  background: rgba(15, 18, 38, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+}
+.tab:hover { color: var(--ink); }
+.tab.active {
+  background: var(--accent);
+  color: #241c00;
+  border-color: var(--accent);
 }
 
 main {
   max-width: 1080px;
   margin: 0 auto;
   padding: 1rem;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.panel-grid {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1rem;
-  grid-template-columns: 1fr;
 }
 
 .panel {
@@ -75,20 +126,57 @@ main {
   padding: 1rem 1.1rem;
 }
 
+.panel + .panel { margin-top: 1rem; }
+.panel-grid .panel + .panel { margin-top: 0; }
+
 .panel h2 {
-  margin: 0 0 0.8rem;
+  margin: 0 0 0.5rem;
   font-size: 1rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--muted);
 }
 
-/* --- controls --- */
-.controls form {
-  display: flex;
-  flex-wrap: wrap;
+.hint {
+  margin: 0 0 0.8rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.hint code { color: var(--accent); }
+
+/* --- stat strip --- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  text-align: center;
+}
+.stat .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+.stat .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.6px; }
+
+/* --- forms --- */
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 0.5rem;
-  align-items: center;
+  align-items: end;
+}
+.grid-form.inline { margin-top: 0.8rem; grid-template-columns: 2fr 1fr auto; }
+
+.grid-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 input, select, button {
@@ -98,37 +186,33 @@ input, select, button {
   border: 1px solid var(--border);
   background: #12152e;
   color: var(--ink);
+  width: 100%;
 }
-
-input[name="name"] { flex: 1 1 160px; }
-input[name="age"] { width: 80px; }
 
 button {
   cursor: pointer;
+  width: auto;
   background: var(--accent);
   color: #241c00;
   border: none;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 button:hover { filter: brightness(1.08); }
 button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
-button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
+button.small { padding: 0.28rem 0.5rem; font-size: 0.75rem; font-weight: 500; }
+button.danger { background: transparent; color: #ffd9e2; border: 1px solid var(--severe); }
 
-.controls .row {
+.row {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.7rem;
   flex-wrap: wrap;
 }
 
-/* --- pixel-art sprite: frames laid left-to-right in one PNG each ---
-   Sizes are driven by custom properties so one rule covers every actor:
-   --fw/--fh  frame size in pixels (14x14 people, 10x8 cat)
-   --scale    integer upscale (keeps the pixels crisp)
-   --frames   number of frames in the strip
-   --dur      loop duration
-   --delay    per-actor offset so the idles never run in sync */
+/* --- pixel-art sprite: one PNG strip per animation, frames left-to-right ---
+   --fw/--fh frame size (14x14 people, 10x8 cat), --scale integer upscale,
+   --frames frame count, --dur loop duration, --delay per-actor offset. */
 .sprite {
   --fw: 14;
   --fh: 14;
@@ -173,7 +257,7 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
 /* --- rooms --- */
 .rooms {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0.8rem;
 }
 
@@ -184,16 +268,16 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
   padding: 0.7rem;
   text-align: center;
 }
-
-.room .room-head { font-weight: 600; margin-bottom: 0.4rem; }
+.room .room-head { font-weight: 600; margin-bottom: 0.3rem; }
 .room .room-meta { color: var(--muted); font-size: 0.78rem; }
 .room.occupied { border-color: var(--asleep); }
-.room .sprite { margin: 0.2rem auto; }
+.room .occupant { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.4rem; }
+.room .occupant .sprite { --scale: 3; }
 
 /* --- patients --- */
 .patients {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 0.8rem;
 }
 
@@ -201,15 +285,15 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.7rem;
-  align-items: center;
+  align-items: start;
   background: #12152e;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 0.6rem 0.7rem;
+  padding: 0.7rem 0.8rem;
 }
-
 .patient .name { font-weight: 600; }
-.patient .meta { color: var(--muted); font-size: 0.78rem; }
+.patient .meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; line-height: 1.5; }
+.patient .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
 
 .badge {
   display: inline-block;
@@ -223,28 +307,45 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
 .badge.Moderate { background: var(--moderate); }
 .badge.Mild { background: var(--mild); }
 
-.patient .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.45rem; }
+.state-pill {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.state-pill.Awake { background: rgba(76, 201, 240, 0.2); color: var(--awake); }
+.state-pill.AsleepInBed { background: rgba(155, 93, 229, 0.2); color: #c9a9ff; }
+.state-pill.AsleepInHallway { background: rgba(239, 71, 111, 0.2); color: #ff9bb3; }
 
 /* --- staff --- */
 .staff {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0.8rem;
 }
-
 .staff .member {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.6rem;
-  align-items: center;
+  gap: 0.7rem;
+  align-items: start;
   background: #12152e;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 0.6rem 0.7rem;
+  padding: 0.7rem 0.8rem;
 }
-
 .staff .member .name { font-weight: 600; }
-.staff .member .meta { color: var(--muted); font-size: 0.78rem; }
+.staff .member .meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+.staff .member .episodes { margin-top: 0.4rem; display: flex; flex-direction: column; gap: 0.15rem; }
+
+/* --- episodes / tables --- */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.6px; }
+tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+td.wrap { white-space: normal; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--awake); }
 
 /* --- queries --- */
 .queries {
@@ -253,10 +354,10 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
   gap: 1rem;
 }
 .queries h3 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--accent); }
-.queries ul { margin: 0; padding-left: 1rem; color: var(--ink); }
+.queries ul { margin: 0; padding-left: 1rem; }
 .queries li { margin: 0.2rem 0; font-size: 0.85rem; }
 .queries .empty { color: var(--muted); font-style: italic; }
-.episode { font-size: 0.8rem; color: var(--muted); display: flex; gap: 0.4rem; }
+.episode { font-size: 0.8rem; color: var(--muted); display: flex; gap: 0.4rem; margin: 0.15rem 0; }
 .episode .time { color: var(--awake); white-space: nowrap; }
 
 /* --- toast --- */
@@ -274,5 +375,7 @@ button.small { padding: 0.3rem 0.55rem; font-size: 0.8rem; font-weight: 500; }
   transition: opacity 0.25s;
   pointer-events: none;
   max-width: 90vw;
+  z-index: 10;
 }
 #toast.show { opacity: 1; }
+#toast.ok { background: #123a2a; border-color: #06d6a0; color: #d6fff0; }

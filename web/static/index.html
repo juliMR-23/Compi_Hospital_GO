@@ -3,62 +3,139 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hospital de los Costeños con Narcolepsia</title>
+  <title>Hospital de los Costeños con Narcolepsia — moderation panel</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1 id="hospital-name">Hospital de los Costeños con Narcolepsia</h1>
-    <p class="tagline">Narcolepsy ward viewer — REST API + HTML/JS bonus</p>
-    <div class="decor" id="decor"></div>
+    <div class="title-row">
+      <h1 id="hospital-name">Hospital de los Costeños con Narcolepsia</h1>
+      <div class="decor" id="decor"></div>
+    </div>
+    <p class="tagline">Moderation panel — REST API + HTML/JS bonus. Every action drives the <code>hospital</code> package live; the server validates and the panel only shows the result.</p>
   </header>
 
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="patients">Patients</button>
+    <button class="tab" data-tab="staff">Staff</button>
+    <button class="tab" data-tab="rooms">Rooms</button>
+    <button class="tab" data-tab="episodes">Episodes</button>
+    <button class="tab" data-tab="queries">Queries</button>
+  </nav>
+
   <main>
-    <section class="panel controls">
-      <h2>Actions</h2>
-      <form id="admit-form">
-        <input name="name" placeholder="Patient name" autocomplete="off" required>
-        <input name="age" type="number" min="1" max="120" value="30" required>
-        <select name="level">
-          <option value="Mild">Mild</option>
-          <option value="Moderate" selected>Moderate</option>
-          <option value="Severe">Severe</option>
-        </select>
-        <button type="submit">Admit patient</button>
-      </form>
-      <div class="row">
-        <button id="attend-hallway" class="ghost">Send orderlies to the hallway</button>
-        <button id="reset" class="ghost">Reset scenario</button>
+    <!-- Overview -->
+    <section class="tab-panel active" data-panel="overview">
+      <div class="stats" id="stats"></div>
+
+      <div class="panel-grid">
+        <section class="panel">
+          <h2>Quick actions</h2>
+          <p class="hint">Send the orderlies to every patient stuck in a hallway, or rebuild the scenario.</p>
+          <div class="row">
+            <button id="attend-hallway" class="ghost">Attend hallway patients</button>
+            <button id="reset" class="ghost">Reset scenario</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Admit patient</h2>
+          <form id="admit-form" class="grid-form">
+            <label>Name<input name="name" placeholder="Patient name" autocomplete="off" required></label>
+            <label>Age<input name="age" type="number" min="1" max="120" value="30" required></label>
+            <label>Level
+              <select name="level">
+                <option value="Mild">Mild</option>
+                <option value="Moderate" selected>Moderate</option>
+                <option value="Severe">Severe</option>
+              </select>
+            </label>
+            <button type="submit">Admit patient</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Hire staff</h2>
+          <form id="doctor-form" class="grid-form">
+            <label>Doctor name<input name="name" placeholder="Doctor name" autocomplete="off" required></label>
+            <label>Age<input name="age" type="number" min="1" max="120" value="40" required></label>
+            <label>Specialty<input name="specialty" placeholder="Neurología" autocomplete="off" required></label>
+            <button type="submit">Hire doctor</button>
+          </form>
+          <form id="orderly-form" class="grid-form inline">
+            <label>Orderly name<input name="name" placeholder="Orderly name" autocomplete="off" required></label>
+            <label>Age<input name="age" type="number" min="1" max="120" value="30" required></label>
+            <button type="submit">Hire orderly</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Register room</h2>
+          <form id="room-form" class="grid-form inline">
+            <label>Number<input name="number" type="number" min="0" value="104" required></label>
+            <label>Capacity<input name="capacity" type="number" min="1" value="1" required></label>
+            <button type="submit">Register room</button>
+          </form>
+        </section>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Rooms</h2>
-      <div id="rooms" class="rooms"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Patients</h2>
-      <div id="patients" class="patients"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Staff</h2>
-      <div id="staff" class="staff"></div>
-    </section>
-
-    <section class="panel queries">
-      <div>
-        <h3>Patients asleep in a hallway</h3>
-        <ul id="q-hallway"></ul>
+    <!-- Patients -->
+    <section class="tab-panel" data-panel="patients">
+      <div class="panel">
+        <h2>Registered patients</h2>
+        <p class="hint">Sleep, wake, assign a room, dispatch an attender or call diagnose. Waking a patient reopens their case; the server decides who attends.</p>
+        <div id="patients" class="patients"></div>
       </div>
-      <div>
-        <h3>History per doctor</h3>
-        <div id="q-history"></div>
+    </section>
+
+    <!-- Staff -->
+    <section class="tab-panel" data-panel="staff">
+      <div class="panel">
+        <h2>Staff under contract</h2>
+        <p class="hint">Doctors and orderlies, both stored in the hospital as a <code>[]Attender</code>. Each card shows the episodes that attender responded to.</p>
+        <div id="staff" class="staff"></div>
       </div>
-      <div>
-        <h3>Severity report</h3>
-        <ul id="q-severe"></ul>
+    </section>
+
+    <!-- Rooms -->
+    <section class="tab-panel" data-panel="rooms">
+      <div class="panel">
+        <h2>Rooms</h2>
+        <p class="hint">Capacity, derived state and the patients occupying each bed.</p>
+        <div id="rooms" class="rooms"></div>
+      </div>
+    </section>
+
+    <!-- Episodes -->
+    <section class="tab-panel" data-panel="episodes">
+      <div class="panel">
+        <h2>Episode history</h2>
+        <p class="hint">Every <code>EpisodeRecord</code> the hospital registered: id, time, patient, attender, location and assigned room.</p>
+        <div id="history" class="table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- Queries -->
+    <section class="tab-panel" data-panel="queries">
+      <div class="panel queries">
+        <div>
+          <h3>5.1 · Patients asleep in a hallway</h3>
+          <ul id="q-hallway"></ul>
+        </div>
+        <div>
+          <h3>5.2 · History per doctor</h3>
+          <div id="q-history"></div>
+        </div>
+        <div>
+          <h3>5.3 · Bed availability</h3>
+          <div id="q-rooms"></div>
+        </div>
+        <div>
+          <h3>5.4 · Severity report</h3>
+          <ul id="q-severe"></ul>
+        </div>
       </div>
     </section>
   </main>
