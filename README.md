@@ -10,6 +10,12 @@ Hospital management system for the *Hospital*, written in Go. It showcases idiom
 ```
 CompiHospitalGO/
 ├── main.go              demo scenario and all printing
+├── assets/
+│   └── Coste.png        Coste sprite sheet (14x14 frames: idle, walk, sleep)
+├── web/                 optional web interface (bonus): REST API + HTML/JS
+│   ├── main.go          JSON API, mutex and static server
+│   ├── main_test.go     handler tests
+│   └── static/          index.html, app.js, style.css
 └── hospital/
     ├── hospital.go      Hospital: admit/hire, dispatch, AssignRoom, queries
     ├── attender.go      Attender interface (implemented by Doctor and Orderly)
@@ -77,6 +83,26 @@ Staff: 3 | Rooms: 3 | Patients: 5
 
 Query 5.3 is answered in the middle of the scenario, while P-004 is still asleep in the hallway, so the "no free room" case is exercised on a genuinely sleeping patient (a bed cannot be assigned to an awake one). The remaining queries print once the scenario has finished, so Query 5.1 reports that the hallway was emptied when the woken patient freed a bed.
 
+## Web interface (bonus)
+
+The optional graphical interface is a small REST API served with the standard library plus a static HTML/JS front end. It adds no code to the model: the `hospital` package is imported and driven only through its exported API, so it keeps no knowledge of the display.
+
+From the repository root:
+
+```bash
+go run ./web
+```
+
+Then open <http://localhost:8080>. The page shows the rooms, every patient with an animated Coste sprite (idle, walking and asleep), the action buttons, and the required queries. The sprite is read from `assets/Coste.png` at run time, so the command must be run from the repository root (use `-assets <dir>` to override).
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/state` | Full snapshot: staff, rooms, patients, hallway, history and severity report. |
+| `POST /api/action` | One mutation, JSON body `{"type": ..., "patient": ..., "location": ...}`. |
+| `GET /assets/Coste.png` | The sprite sheet. |
+
+`POST /api/action` accepts these `type` values: `admit`, `sleep`, `wake`, `assign-room`, `dispatch`, `attend-hallway` and `reset`. Because `net/http` serves each request in its own goroutine, the web layer guards the hospital with its own `sync.Mutex`; the model itself is left untouched.
+
 ## How to run the tests
 
 ```bash
@@ -98,7 +124,8 @@ go test -race ./...
 > ```text
 > ?    CompiHospitalGO           [no test files]
 > ok   CompiHospitalGO/hospital
-
+> ok   CompiHospitalGO/web
+> ```
 
 ## Tests
 
@@ -117,6 +144,8 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | `TestDispatchRotatesThroughStaff` | Round-robin rotates the `[]Attender` (doctor, then orderly) and records each episode on the attender and in the history. |
 | `TestDispatchAttendsWithDoctorAtCapacity` | A doctor at `maxPatients` is still dispatched to an emergency. |
 | `TestAttendHallwayPatients` | Dispatches an attender to every patient in a hallway. |
+
+The web interface has its own suite in `web/main_test.go` (black-box over `package main`): `TestStateEndpoint` checks the JSON snapshot, and `TestActionAdmit`, `TestActionSleepAssignWake`, `TestActionErrors` and `TestActionAttendHallway` drive the API with `httptest`.
 
 ## Design decisions
 
@@ -137,6 +166,7 @@ The suite lives in `hospital/hospital_test.go` (white-box, `package hospital`) a
 | State-driven auto-dispatch | `hospital.go` | the hospital reacts to the patient's state |
 | History as value snapshots | `episodeRecord.go` | records stay immutable |
 | Data, not printing, in the model | the four queries | the model stays UI-agnostic |
+| Display kept out of the model | `web/` (and `main.go`) | the `hospital` package is untouched when the interface is added |
 
 ### Object-oriented foundations
 
