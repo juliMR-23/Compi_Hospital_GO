@@ -81,6 +81,94 @@ func TestStateEndpoint(t *testing.T) {
 	if len(st.History) == 0 {
 		t.Error("history is empty, want the seeded dispatch episodes")
 	}
+	for _, s := range st.Staff {
+		if s.Age == 0 {
+			t.Errorf("staff %s has no age, want the embedded Person data", s.ID)
+		}
+	}
+}
+
+func TestActionDiagnoseAssignsDoctor(t *testing.T) {
+	s := newTestServer(t)
+
+	var target patientDTO
+	for _, p := range getState(t, s).Patients {
+		if p.StateKey == "Awake" && p.Doctor == nil {
+			target = p
+			break
+		}
+	}
+	if target.ID == "" {
+		t.Fatal("scenario has no awake patient without a doctor")
+	}
+
+	code, st := post(t, s, fmt.Sprintf(`{"type":"diagnose","patient":%q}`, target.ID))
+	if code != http.StatusOK {
+		t.Fatalf("diagnose status = %d, want 200", code)
+	}
+	if got := patientByID(st, target.ID); got.Doctor == nil {
+		t.Fatalf("after diagnose patient %s has no doctor", target.ID)
+	}
+}
+
+func TestActionHireStaffAndRegisterRoom(t *testing.T) {
+	s := newTestServer(t)
+	before := getState(t, s)
+
+	code, st := post(t, s, `{"type":"hire-doctor","name":"Nuevo Galeno","age":39,"specialty":"Cardiología"}`)
+	if code != http.StatusOK {
+		t.Fatalf("hire-doctor status = %d, want 200", code)
+	}
+	if len(st.Doctors) != len(before.Doctors)+1 || len(st.Staff) != len(before.Staff)+1 {
+		t.Fatalf("after hire-doctor doctors=%d staff=%d, want +1 each", len(st.Doctors), len(st.Staff))
+	}
+
+	code, st = post(t, s, `{"type":"hire-orderly","name":"Nuevo Camillero","age":25}`)
+	if code != http.StatusOK {
+		t.Fatalf("hire-orderly status = %d, want 200", code)
+	}
+	if len(st.Staff) != len(before.Staff)+2 {
+		t.Fatalf("after hire-orderly staff=%d, want %d", len(st.Staff), len(before.Staff)+2)
+	}
+
+	code, st = post(t, s, `{"type":"register-room","number":104,"capacity":2}`)
+	if code != http.StatusOK {
+		t.Fatalf("register-room status = %d, want 200", code)
+	}
+	if len(st.Rooms) != len(before.Rooms)+1 {
+		t.Fatalf("after register-room rooms=%d, want %d", len(st.Rooms), len(before.Rooms)+1)
+	}
+}
+
+func TestActionHireErrorsForwardedFromModel(t *testing.T) {
+	s := newTestServer(t)
+
+	// An invalid room number and an empty specialty are rejected by the model,
+	// so the UI only has to display the error it receives.
+	if code, _ := post(t, s, `{"type":"register-room","number":-1,"capacity":1}`); code != http.StatusConflict {
+		t.Errorf("negative room number status = %d, want 409", code)
+	}
+	if code, _ := post(t, s, `{"type":"hire-doctor","name":"X","age":40,"specialty":""}`); code != http.StatusConflict {
+		t.Errorf("empty specialty status = %d, want 409", code)
+	}
+}
+
+func TestActionAttendSleepRejectsAwakePatient(t *testing.T) {
+	s := newTestServer(t)
+
+	var awake patientDTO
+	for _, p := range getState(t, s).Patients {
+		if p.StateKey == "Awake" {
+			awake = p
+			break
+		}
+	}
+	if awake.ID == "" {
+		t.Fatal("scenario has no awake patient")
+	}
+	if code, _ := post(t, s, fmt.Sprintf(`{"type":"attend-sleep","patient":%q}`, awake.ID)); code != http.StatusConflict {
+		t.Errorf("attend-sleep on awake patient status = %d, want 409", code)
+	}
 }
 
 func TestActionAdmit(t *testing.T) {
